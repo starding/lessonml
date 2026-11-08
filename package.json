@@ -31,5 +31,16 @@
   },
   "bin": {
     "lessonml-mcp": "dist/src/mcp/server.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./player": {
+      "types": "./dist/src/player/element.d.ts",
+      "default": "./dist/src/player/element.js"
+    },
+    "./package.json": "./package.json"
   }
 }

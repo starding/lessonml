@@ -213,8 +213,9 @@ export class LmlSceneElement extends HTMLElement {
     if (!frame) return null
     const base = { kind: frame.kind, camera: frame.stage.camera, screen: frame.stage.screen, effects: frame.stage.effects, expressions: frame.stage.expressions }
     const live = (text?: string) => (text ? this.session!.interpolate(text) : text)
-    if (frame.kind === 'line') return { ...base, speaker: frame.step.speaker, text: live(frame.step.text) }
-    if (frame.kind === 'interaction') return { ...base, component: frame.step.component, id: frame.step.id, prompt: live(frame.step.props.prompt), solved: frame.solved, state: { ...this.session!.state } }
+    // words: the target words on screen, so a host can show them (frequency map, word drawer).
+    if (frame.kind === 'line') return { ...base, speaker: frame.step.speaker, text: live(frame.step.text), translation: frame.step.translation ? live(frame.step.translation) : undefined, words: frame.step.words }
+    if (frame.kind === 'interaction') return { ...base, component: frame.step.component, id: frame.step.id, prompt: live(frame.step.props.prompt), solved: frame.solved, state: { ...this.session!.state }, words: frame.step.words }
     return base
   }
 
@@ -330,12 +331,14 @@ export class LmlSceneElement extends HTMLElement {
     this.root.querySelector('.end')?.remove()
     this.bottom.innerHTML = ''
     if (frame.kind === 'end') {
+      this.dispatchEvent(new CustomEvent('lml-end', { detail: { state: this.session?.state, evidence: this.session?.evidence } }))
+      // A host app shows its own ending (a recap, the next episode).
+      if (this.hostControls) return
       const end = document.createElement('div')
       end.className = 'end'
       end.innerHTML = `<h2>${ui.end}</h2><button type="button">${ui.replay}</button>`
       end.querySelector('button')!.onclick = () => { if (this.session) { this.session = new LessonSession(this.session.lesson); this.engine.directed = false; this.render() } }
       this.root.appendChild(end)
-      this.dispatchEvent(new CustomEvent('lml-end', { detail: { state: this.session?.state, evidence: this.session?.evidence } }))
       return
     }
     if (frame.kind === 'interaction' && !this.inScene(frame)) this.bottom.appendChild(this.panelFor(frame))

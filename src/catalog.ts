@@ -99,7 +99,7 @@ export const CORE_COMPONENTS: Record<string, ComponentEntry> = {
   },
   'lessonml:choose-reply': {
     description: 'The learner picks what to say next; the other character reacts in the handler. Use for tone, register and judgment.',
-    props: { required: ['prompt'], optional: [] },
+    props: { required: ['prompt'], optional: ['title'] },
     options: { min: 2, max: 4, correct: 'one' },
     events: ['correct', 'wrong'],
     facets: ['read', 'apply'],
@@ -107,7 +107,7 @@ export const CORE_COMPONENTS: Record<string, ComponentEntry> = {
   },
   'lessonml:speak': {
     description: 'The learner says a sentence out loud; speech recognition checks the target word was said.',
-    props: { required: ['prompt', 'target'], optional: ['model'] },
+    props: { required: ['prompt', 'target'], optional: ['model', 'title'] },
     options: null,
     events: ['spoken', 'missed'],
     facets: ['speak'],
@@ -131,7 +131,7 @@ export const CORE_COMPONENTS: Record<string, ComponentEntry> = {
   },
   'lessonml:write': {
     description: 'The learner writes a few sentences (a reply, an explanation of their reasoning). A reviewer supplied by the host app judges it; without one, the player checks the required words and length.',
-    props: { required: ['prompt'], optional: ['targets', 'min_words', 'model'] },
+    props: { required: ['prompt'], optional: ['targets', 'min_words', 'model', 'title'] },
     options: null,
     events: ['correct', 'wrong'],
     facets: ['write', 'explain', 'apply'],
