@@ -11,6 +11,8 @@
 //   NAME (expr): …      sets that character's expression until changed
 
 import type { Action, InteractionStep, Lesson, LineStep, Step } from '../ir.js'
+import { INTERPOLATION, formatNumber, makeScope } from '../expr.js'
+import { parseControls, parseNumericAnswer, snap, withinTolerance } from '../controls.js'
 
 export interface StageState {
   sceneId: string
@@ -42,7 +44,7 @@ export type Frame =
     solved: boolean
     misses: number[]
     // The last thing said in reaction to an attempt (hint or a handler line).
-    feedback: { line: LineStep | null; hint: string | null } | null
+    feedback: { line: LineStep | null; hint: string | null; direction?: 'high' | 'low' | 'unit' } | null
   }
   | { kind: 'end'; index: number; stage: StageState }
 
@@ -86,7 +88,26 @@ export class LessonSession {
     this.advance()
   }
 
+  private exprCache = new Map()
+
   get frame(): Frame { return this.s.frame as Frame }
+
+  // Evaluate an expression over the current state and the lesson's formulas.
+  evaluate(source: string): number {
+    return makeScope(this.s.state, this.lesson.formulas, this.exprCache).evaluate(source)
+  }
+
+  // Evaluate with some state overridden (plots sweep a variable this way).
+  evaluateWith(source: string, overrides: Record<string, number>): number {
+    return makeScope({ ...this.s.state, ...overrides }, this.lesson.formulas, this.exprCache).evaluate(source)
+  }
+
+  // Replace {=expression} with its current value.
+  interpolate(text: string): string {
+    return text.replace(INTERPOLATION, (_, source: string) => {
+      try { return formatNumber(this.evaluate(source)) } catch { return '?' }
+    })
+  }
   get state(): Readonly<Record<string, number>> { return this.s.state }
   get canGoBack() { return this.history.length > 0 }
   get blocked() { return this.frame.kind === 'interaction' && !this.frame.solved }
@@ -129,6 +150,62 @@ export class LessonSession {
     return this.resolve(frame, ok, -1, null, ok ? 'spoken' : 'missed')
   }
 
+  // numeric: the learner typed a value (and maybe a unit).
+  numeric(input: string): AnswerResult {
+    const frame = this.requireInteraction()
+    const parsed = parseNumericAnswer(input)
+    const expected = this.evaluate(frame.step.props.answer)
+    const tolerance = frame.step.props.tolerance
+    const unit = (frame.step.props.unit || '').trim().toLowerCase()
+    if (!parsed) return this.resolve(frame, false, -1, null, undefined, undefined)
+    const unitOk = !unit || parsed.unit.toLowerCase() === unit
+    const valueOk = withinTolerance(parsed.value, expected, tolerance)
+    if (valueOk && unitOk) return this.resolve(frame, true, -1, null)
+    const distractor = frame.step.options.findIndex((option) => {
+      const value = parseNumericAnswer(option.text)?.value
+      return value !== undefined && withinTolerance(parsed.value, value, tolerance)
+    })
+    if (distractor >= 0) return this.resolve(frame, false, distractor, frame.step.options[distractor].hint ?? null)
+    return this.resolve(frame, false, -1, null, undefined, valueOk ? 'unit' : parsed.value > expected ? 'high' : 'low')
+  }
+
+  // explore: the learner moved a slider. Returns whether the goal is now met.
+  adjust(name: string, value: number): AnswerResult & { value: number } {
+    const frame = this.requireInteraction()
+    const control = parseControls(frame.step.props.controls || '').controls.find((candidate) => candidate.name === name)
+    if (!control) throw new Error(`${name} is not a control of ${frame.step.id}`)
+    const snapped = snap(control, value)
+    this.s.state[name] = snapped
+    if (this.evaluate(frame.step.props.goal)) return { ...this.resolve(frame, true, -1, null), value: snapped }
+    return { correct: false, evidence: [], value: snapped }
+  }
+
+  // A setting of the explore controls that meets the goal (grid search), or null.
+  findGoal(): Record<string, number> | null {
+    const frame = this.frame
+    if (frame.kind !== 'interaction' || frame.step.component !== 'lessonml:explore') return null
+    const controls = parseControls(frame.step.props.controls || '').controls.slice(0, 3)
+    const grids = controls.map((control) => {
+      const count = Math.min(40, Math.round((control.max - control.min) / control.step) + 1)
+      return Array.from({ length: count }, (_, i) => snap(control, control.min + (control.max - control.min) * (count === 1 ? 0 : i / (count - 1))))
+    })
+    const saved = { ...this.s.state }
+    const walk = (index: number, chosen: Record<string, number>): Record<string, number> | null => {
+      if (index === controls.length) {
+        Object.assign(this.s.state, chosen)
+        return this.evaluate(frame.step.props.goal) ? { ...chosen } : null
+      }
+      for (const value of grids[index]) {
+        const found = walk(index + 1, { ...chosen, [controls[index].name]: value })
+        if (found) return found
+      }
+      return null
+    }
+    const found = walk(0, {})
+    this.s.state = saved
+    return found
+  }
+
   // write: the host's reviewer (or the default check) judged the text.
   reviewed(pass: boolean, feedback?: string): AnswerResult {
     const frame = this.requireInteraction()
@@ -142,7 +219,7 @@ export class LessonSession {
     return frame
   }
 
-  private resolve(frame: Extract<Frame, { kind: 'interaction' }>, correct: boolean, missIndex: number, hint: string | null, eventName?: string): AnswerResult {
+  private resolve(frame: Extract<Frame, { kind: 'interaction' }>, correct: boolean, missIndex: number, hint: string | null, eventName?: string, direction?: 'high' | 'low' | 'unit'): AnswerResult {
     const event = eventName || (correct ? 'correct' : 'wrong')
     const firstTry = frame.misses.length === 0
     const evidence: EvidenceEvent[] = []
@@ -158,7 +235,7 @@ export class LessonSession {
     } else {
       if (missIndex >= 0 && !frame.misses.includes(missIndex)) frame.misses.push(missIndex)
       if (missIndex < 0) frame.misses.push(-1)
-      frame.feedback = { line: said, hint }
+      frame.feedback = { line: said, hint, direction }
     }
     this.evidence.push(...evidence)
     return { correct, evidence }
@@ -168,7 +245,7 @@ export class LessonSession {
     if (action.kind === 'evidence') return { evidence: { facet: action.facet!, target: action.target!, interaction: step.id, firstTry, at } }
     if (action.kind === 'set') {
       const current = this.s.state[action.variable!] ?? 0
-      const value = action.value ?? 0
+      const value = this.evaluate(action.expr || '0')
       this.s.state[action.variable!] = action.op === '+=' ? current + value : action.op === '-=' ? current - value : value
       return {}
     }
@@ -176,17 +253,8 @@ export class LessonSession {
     return { say: action.say }
   }
 
-  private evaluate(step: Extract<Step, { kind: 'branch' }>) {
-    const value = this.s.state[step.condition.variable] ?? 0
-    const target = step.condition.value
-    switch (step.condition.op) {
-      case '>': return value > target
-      case '<': return value < target
-      case '>=': return value >= target
-      case '<=': return value <= target
-      case '==': return value === target
-      default: return value !== target
-    }
+  private branchTaken(step: Extract<Step, { kind: 'branch' }>) {
+    return Boolean(this.evaluate(step.condition))
   }
 
   private emit(frame: Frame) {
@@ -229,7 +297,7 @@ export class LessonSession {
         continue
       }
       if (step.kind === 'branch') {
-        if (this.evaluate(step)) s.stack.push({ steps: step.steps, at: 0 })
+        if (this.branchTaken(step)) s.stack.push({ steps: step.steps, at: 0 })
         continue
       }
       if (step.kind === 'line') {

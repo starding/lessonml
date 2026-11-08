@@ -19,13 +19,15 @@ import { STYLE_PACKS } from '../rig/styles.js'
 import { setExpression, setEyes, setMouth } from '../rig/controls.js'
 import { LessonSession, type Frame } from './session.js'
 import { getSet, registeredSets, type SetDefinition, type SetRuntime } from '../sets/index.js'
+import { parseControls } from '../controls.js'
+import { formatNumber } from '../expr.js'
 
 import { defaultReviewer, type Reviewer } from './reviewer.js'
 export { defaultReviewer, type Reviewer }
 
 const UI = {
-  en: { next: 'Swipe up to continue ↑', blocked: 'Solve it to continue', solveHere: 'Tap the answer on the screen', end: 'End of lesson', replay: 'Play again', check: 'Check', say: 'Say it', listening: 'Listening…', typeInstead: 'Type what you would say', tapForTranslation: 'Tap for translation', move: 'Your move', fill: 'Fill in the blank.', write: 'Write your answer…', submit: 'Submit', reviewing: 'Reviewing…' },
-  zh: { next: '上滑继续 ↑', blocked: '完成这一关后上滑继续', solveHere: '在屏幕上点出答案', end: '本课完', replay: '再看一遍', check: '确定', say: '开口说', listening: '正在听…', typeInstead: '也可以打出你要说的话', tapForTranslation: '轻触对白看中文', move: '轮到你了', fill: '把空缺处填上。', write: '写下你的回答……', submit: '提交', reviewing: '正在点评…' }
+  en: { next: 'Swipe up to continue ↑', blocked: 'Solve it to continue', solveHere: 'Tap the answer on the screen', end: 'End of lesson', replay: 'Play again', check: 'Check', say: 'Say it', listening: 'Listening…', typeInstead: 'Type what you would say', tapForTranslation: 'Tap for translation', move: 'Your move', fill: 'Fill in the blank.', high: 'Too high. Try again.', low: 'Too low. Try again.', unit: 'Right number. Check the unit.', goalMet: 'Got it!', write: 'Write your answer…', submit: 'Submit', reviewing: 'Reviewing…' },
+  zh: { next: '上滑继续 ↑', blocked: '完成这一关后上滑继续', solveHere: '在屏幕上点出答案', end: '本课完', replay: '再看一遍', check: '确定', say: '开口说', listening: '正在听…', typeInstead: '也可以打出你要说的话', tapForTranslation: '轻触对白看中文', move: '轮到你了', fill: '把空缺处填上。', high: '偏高了，再试试。', low: '偏低了，再试试。', unit: '数对了，检查一下单位。', goalMet: '做到了！', write: '写下你的回答……', submit: '提交', reviewing: '正在点评…' }
 }
 
 const TILT: Record<string, number> = { neutral: 0, smile: 1.5, stern: -2, surprised: 0, worried: 2.5 }
@@ -63,6 +65,10 @@ svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
 .panel input { flex:1; border-radius:12px; border:1px solid rgba(255,255,255,.2); background:rgba(9,11,26,.9); color:#fff; font-size:16px; padding:10px 12px; }
 .panel .act { border-radius:12px; border:0; background:#eef1ff; color:#0b0d1a; font-weight:700; padding:10px 16px; cursor:pointer; }
 .panel textarea { border-radius:12px; border:1px solid rgba(255,255,255,.2); background:rgba(9,11,26,.92); color:#fff; font:15px/1.5 inherit; padding:10px 12px; min-height:84px; resize:none; }
+.panel .slider { display:grid; grid-template-columns:72px 1fr 64px; align-items:center; gap:10px; background:rgba(9,11,26,.88); border:1px solid rgba(255,255,255,.14); border-radius:14px; padding:10px 12px; font-size:14px; }
+.panel .slider .name { font-family:ui-monospace,Menlo,monospace; color:#c9f6ff; }
+.panel .slider .value { text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
+.panel .slider input { width:100%; accent-color:#ffb27a; }
 .panel .line { font-family:ui-monospace,Menlo,monospace; font-size:14px; background:rgba(9,17,32,.92); border:1px solid rgba(95,227,255,.3); border-radius:12px; padding:10px 12px; color:#c9f6ff; }
 .end { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:rgba(5,6,13,.6); }
 .end h2 { margin:0; font-size:34px; letter-spacing:.14em; }
@@ -118,7 +124,9 @@ export class LmlSceneElement extends HTMLElement {
       later: (fn, ms) => { this.timers.push(window.setTimeout(() => { if (this.alive) fn() }, ms)) },
       shake: (amount) => { this.engine.shake = Math.max(this.engine.shake, amount) },
       scan: () => { const scan = this.root.querySelector<HTMLElement>('.scan')!; scan.classList.remove('run'); void scan.offsetWidth; scan.classList.add('run') },
-      memo: {}
+      memo: {},
+      interpolate: (text) => this.session?.interpolate(text) ?? text,
+      evaluate: (source, overrides = {}) => this.session ? this.session.evaluateWith(source, overrides) : NaN
     }
     new ResizeObserver(() => this.resize()).observe(this)
     new ResizeObserver(() => { this.engine.bottomInset = this.bottom.offsetHeight + 24; this.fit(false) }).observe(this.bottom)
@@ -173,6 +181,11 @@ export class LmlSceneElement extends HTMLElement {
         if (frame.step.component === 'lessonml:cloze') session.type(frame.step.props.answer || '')
         else if (frame.step.component === 'lessonml:speak') session.spoke(true)
         else if (frame.step.component === 'lessonml:write') session.reviewed(true)
+        else if (frame.step.component === 'lessonml:numeric') session.numeric(`${session.evaluate(frame.step.props.answer)} ${frame.step.props.unit || ''}`)
+        else if (frame.step.component === 'lessonml:explore') {
+          const found = session.findGoal()
+          if (found) for (const [name, value] of Object.entries(found)) if (session.frame.kind === 'interaction' && !session.frame.solved) session.adjust(name, value)
+        }
         else session.choose(Math.max(0, frame.step.options.findIndex((option) => option.correct)))
       }
       if (!session.next()) break
@@ -199,8 +212,9 @@ export class LmlSceneElement extends HTMLElement {
     const frame = this.session?.frame
     if (!frame) return null
     const base = { kind: frame.kind, camera: frame.stage.camera, screen: frame.stage.screen, effects: frame.stage.effects, expressions: frame.stage.expressions }
-    if (frame.kind === 'line') return { ...base, speaker: frame.step.speaker, text: frame.step.text }
-    if (frame.kind === 'interaction') return { ...base, component: frame.step.component, id: frame.step.id, prompt: frame.step.props.prompt, solved: frame.solved }
+    const live = (text?: string) => (text ? this.session!.interpolate(text) : text)
+    if (frame.kind === 'line') return { ...base, speaker: frame.step.speaker, text: live(frame.step.text) }
+    if (frame.kind === 'interaction') return { ...base, component: frame.step.component, id: frame.step.id, prompt: live(frame.step.props.prompt), solved: frame.solved, state: { ...this.session!.state } }
     return base
   }
 
@@ -333,14 +347,17 @@ export class LmlSceneElement extends HTMLElement {
     if (frame.kind === 'line') {
       line = frame.step
       translation = line.translation || ''
-    } else if (frame.feedback?.line || frame.feedback?.hint) {
-      line = frame.feedback.line || { kind: 'line', line: 0, speaker: null, text: '…', words: [] }
-      translation = frame.feedback.hint || line.translation || ''
+    } else if (frame.feedback?.line || frame.feedback?.hint || frame.feedback?.direction) {
+      const direction = frame.feedback.direction ? ui[frame.feedback.direction] : ''
+      line = frame.feedback.line || { kind: 'line', line: 0, speaker: null, text: direction || '…', words: [] }
+      translation = frame.feedback.hint || (frame.feedback.line ? direction : '') || line.translation || ''
     } else {
       const fallback = frame.step.component === 'lessonml:cloze' ? ui.fill : ''
       line = { kind: 'line', line: frame.step.line, speaker: null, text: frame.step.props.prompt || fallback, words: frame.step.props.prompt ? frame.step.words : [] }
       tag = frame.step.props.title || ui.move
     }
+    line = { ...line, text: this.session!.interpolate(line.text) }
+    translation = this.session!.interpolate(translation)
     if (line.speaker && this.world) {
       const character = this.world.characters[this.keyOf(line.speaker)!]
       tag = character?.name.toUpperCase() || ''
@@ -412,6 +429,39 @@ export class LmlSceneElement extends HTMLElement {
       input.addEventListener('keydown', (event) => { event.stopPropagation(); if (event.key === 'Enter') submit() })
       return panel
     }
+    if (step.component === 'lessonml:numeric') {
+      panel.innerHTML = `<div class="row"><input inputmode="decimal" autocomplete="off"><button class="act" type="button">${this.ui.check}</button></div>`
+      const input = panel.querySelector('input')!
+      input.placeholder = step.props.unit ? `… ${step.props.unit}` : '…'
+      const submit = () => { if (!frame.solved && input.value.trim()) after(session.numeric(input.value).correct) }
+      panel.querySelector('.act')!.addEventListener('click', submit)
+      input.addEventListener('keydown', (event) => { event.stopPropagation(); if (event.key === 'Enter') submit() })
+      if (frame.solved) input.disabled = true
+      return panel
+    }
+    if (step.component === 'lessonml:explore') {
+      for (const control of parseControls(step.props.controls || '').controls) {
+        const row = document.createElement('label')
+        row.className = 'slider'
+        row.innerHTML = `<span class="name"></span><input type="range"><span class="value"></span>`
+        row.querySelector('.name')!.textContent = control.name
+        const range = row.querySelector('input')!
+        Object.assign(range, { min: String(control.min), max: String(control.max), step: String(control.step), value: String(session.state[control.name] ?? control.min) })
+        const value = row.querySelector('.value')!
+        value.textContent = formatNumber(Number(range.value))
+        range.disabled = frame.solved
+        range.addEventListener('input', () => {
+          if (session.frame.kind !== 'interaction' || session.frame.solved) return
+          const result = session.adjust(control.name, Number(range.value))
+          value.textContent = formatNumber(result.value)
+          if (result.correct) { this.emitAnswer(); this.render(); return }
+          this.refreshLive()
+        })
+        for (const type of ['touchstart', 'mousedown', 'pointerdown']) range.addEventListener(type, (event) => event.stopPropagation())
+        panel.appendChild(row)
+      }
+      return panel
+    }
     if (step.component === 'lessonml:write') {
       panel.innerHTML = `<textarea></textarea><div class="row" style="justify-content:flex-end"><button class="act" type="button">${this.ui.submit}</button></div>`
       const area = panel.querySelector('textarea')!
@@ -440,6 +490,18 @@ export class LmlSceneElement extends HTMLElement {
       panel.appendChild(button)
     })
     return panel
+  }
+
+  // Slider moved: redraw the set and live text without retyping the dialogue.
+  private refreshLive() {
+    const session = this.session
+    if (!session || !this.set) return
+    this.set.stage?.(session.frame, this.runtime)
+    this.typing?.done()
+    const frame = session.frame
+    const text = this.root.querySelector('.box .text')
+    if (frame.kind === 'interaction' && text && frame.step.props.prompt?.includes('{=')) text.textContent = session.interpolate(frame.step.props.prompt)
+    this.dispatchEvent(new CustomEvent('lml-state', { detail: { ...session.state } }))
   }
 
   private emitAnswer() {

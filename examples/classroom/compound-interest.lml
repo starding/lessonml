@@ -1,0 +1,66 @@
+---
+lesson: academy:compound-interest
+world: ./world.json
+language: en
+learner_language: zh
+state:
+  principal: 1000
+  rate: 0.05
+  years: 10
+  instinct: 0
+formulas:
+  balance: principal * (1 + rate) ^ years
+  simple: principal * (1 + rate * years)
+---
+// v0.5 acceptance: formulas, live text, a numeric guess, a live chart with
+// sliders, and a rule discovered from the learner's own result.
+
+# scene doubling @academy:classroom
+! camera wide
+! board 1000 × (1 + 5%)^10 = ?
+> Your first job pays a bonus of 1,000 dollars. You leave it in an account that pays 5% a year.
+  zh: 你的第一份工作发了 1000 美元奖金。你把它存进一个年利率 5% 的账户。
+
+! camera mentor
+LIN (neutral): "Each year the bank pays {interest} on your {principal}, and on last year's interest too. That is {compound} interest."
+  zh: 每年银行不光按本金付利息，还按去年的利息再付利息。这就是复利。
+
+! camera board
+? lessonml:numeric guess-ten
+  prompt: Guess first. After 10 years, about how much is in the account?
+  answer: balance
+  tolerance: 5%
+  - 1500
+    hint: 1500 是单利：每年只按本金算 50 元。复利还会对利息再算利息。
+  on correct: evidence predict math:compound-interest; set instinct += 1
+  on wrong: LIN (smile): "Close. Remember, the interest earns interest."
+
+! board 1000 × 1.05^10 = {=round(balance)}
+! camera mentor
+LIN (smile): "{=round(balance)} dollars. The extra {=round(balance - simple)} came from interest on interest."
+  zh: 是 {=round(balance)} 美元。多出来的 {=round(balance - simple)} 美元，来自利息的利息。
+
+! board Just double it: 2,000 – 2,150
+! plot balance over years 0..30 line 2 * principal
+! camera board
+? lessonml:explore double-it
+  prompt: Find a rate and a number of years where the money just doubles, between 2,000 and 2,150. Right now it is {=round(balance)}.
+  controls: rate 0.01..0.12 step 0.01, years 1..30 step 1
+  goal: balance >= 2 * principal && balance <= 2.15 * principal
+  on correct: evidence apply math:compound-interest
+
+! camera mentor
+LIN (surprised): "{=round(rate * 100)}% for {=years} years. Multiply them: {=round(rate * 100 * years)}. Try it again with other numbers, you will keep landing near 72."
+  zh: {=round(rate * 100)}% 乘 {=years} 年，等于 {=round(rate * 100 * years)}。换别的组合再试，你总会落在 72 附近。
+
+? lessonml:numeric rule-72
+  prompt: That is the rule of 72. At 6% a year, about how many years until money doubles?
+  answer: 72 / 6
+  tolerance: 0.5
+  - 6
+    hint: 那是利率本身。规则是 72 除以利率。
+  on correct: evidence compute math:compound-interest
+
+if instinct > 0:
+  LIN (smile): "You guessed well before we computed anything. That instinct is worth training."
+    zh: 你在计算之前就猜得很准。这种直觉值得练。

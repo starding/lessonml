@@ -12,6 +12,8 @@ export interface Lesson {
   language: string
   learnerLanguage?: string
   state: Record<string, number>
+  // Named expressions over state, evaluated live (expr.ts): balance: principal * (1 + rate) ^ years
+  formulas: Record<string, string>
   // Lesson-level senses; they override the world's glossary. Keys are target ids.
   glossary: Record<string, { gloss: string; definition?: string }>
   scenes: Scene[]
@@ -60,7 +62,8 @@ export interface Action {
   target?: string
   variable?: string
   op?: '=' | '+=' | '-='
-  value?: number
+  // set: the right-hand side, an expression over state and formulas
+  expr?: string
   say?: LineStep
 }
 
@@ -79,7 +82,8 @@ export interface InteractionStep {
 export interface BranchStep {
   kind: 'branch'
   line: number
-  condition: { variable: string; op: '>' | '<' | '>=' | '<=' | '==' | '!='; value: number }
+  // An expression over state and formulas; non-zero means taken.
+  condition: string
   steps: Step[]
 }
 

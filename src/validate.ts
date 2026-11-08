@@ -6,6 +6,8 @@
 
 import { CORE_COMPONENTS, EVIDENCE_FACETS, TARGET_ID, closest, toTargetId, type World } from './catalog.js'
 import type { Diagnostic, Lesson, LineStep, Step } from './ir.js'
+import { CONSTANTS, ExprError, FUNCTIONS, INTERPOLATION, callsIn, namesIn, parseExpr } from './expr.js'
+import { parseControls } from './controls.js'
 import { parseScreenplay } from './screenplay.js'
 
 export interface CompileResult {
@@ -20,11 +22,58 @@ export function compile(source: string, world: World): CompileResult {
   // Bare terms belong to the lesson's language: "pitch" → "en:pitch".
   lesson.glossary = Object.fromEntries(Object.entries(lesson.glossary).map(([key, entry]) => [toTargetId(key, lesson.language), entry]))
   const characterByName = new Map(Object.entries(world.characters).map(([key, character]) => [character.name.toLowerCase(), key]))
-  const declared = new Set(Object.keys(lesson.state))
-  const interactionIds = new Set<string>()
   const report = (line: number, code: string, message: string, suggestions?: string[]) => diagnostics.push({ line, code, message, suggestions })
+  const declared = new Set(Object.keys(lesson.state))
+  const formulaNames = Object.keys(lesson.formulas)
+  const known = () => [...declared, ...formulaNames]
+
+  // Every expression: parses, uses known names and functions.
+  const checkExpr = (source: string, line: number, where: string) => {
+    let tree
+    try {
+      tree = parseExpr(source)
+    } catch (error) {
+      const at = error instanceof ExprError ? ` at character ${error.position + 1}` : ''
+      report(line, 'bad-expression', `${where}: cannot read "${source}"${at}: ${(error as Error).message}.`)
+      return null
+    }
+    for (const name of namesIn(tree)) {
+      if (!(name in CONSTANTS) && !declared.has(name) && !formulaNames.includes(name)) {
+        report(line, 'unknown-name', `${where}: "${name}" is not a state variable or formula. Declare it under "state:" or "formulas:".`, closest(name, known()))
+      }
+    }
+    for (const call of callsIn(tree)) {
+      const fn = FUNCTIONS[call.fn]
+      if (!fn) report(line, 'unknown-function', `${where}: no function "${call.fn}". Functions: ${Object.keys(FUNCTIONS).join(', ')}.`, closest(call.fn, Object.keys(FUNCTIONS)))
+      else if (call.count < fn.arity[0] || call.count > fn.arity[1]) report(line, 'function-arity', `${where}: ${call.fn} takes ${fn.arity[0] === fn.arity[1] ? fn.arity[0] : `${fn.arity[0]}–${fn.arity[1]}`} argument(s), got ${call.count}.`)
+    }
+    return tree
+  }
+  const checkText = (text: string | undefined, line: number, where: string) => {
+    for (const match of (text || '').matchAll(INTERPOLATION)) checkExpr(match[1], line, `${where} {=${match[1]}}`)
+  }
+
+  // Formulas: valid, not shadowing state, no cycles.
+  const formulaDeps = new Map<string, Set<string>>()
+  for (const [name, source] of Object.entries(lesson.formulas)) {
+    if (declared.has(name)) report(1, 'formula-shadows-state', `formula "${name}" has the same name as a state variable; rename one.`)
+    const tree = checkExpr(source, 1, `formula ${name}`)
+    if (tree) formulaDeps.set(name, new Set([...namesIn(tree)].filter((dep) => formulaNames.includes(dep))))
+  }
+  const visiting = new Set<string>(), done = new Set<string>()
+  const visit = (name: string, path: string[]): void => {
+    if (done.has(name)) return
+    if (visiting.has(name)) { report(1, 'formula-cycle', `formulas depend on each other in a loop: ${[...path, name].join(' → ')}.`); return }
+    visiting.add(name)
+    for (const dep of formulaDeps.get(name) || []) visit(dep, [...path, name])
+    visiting.delete(name)
+    done.add(name)
+  }
+  formulaNames.forEach((name) => visit(name, []))
+  const interactionIds = new Set<string>()
 
   const checkLine = (step: LineStep) => {
+    checkText(step.text, step.line, 'line')
     if (step.speaker === null) return
     const key = characterByName.get(step.speaker)
     if (!key) {
@@ -43,6 +92,7 @@ export function compile(source: string, world: World): CompileResult {
     for (const step of steps) {
       if (step.kind === 'line') checkLine(step)
       else if (step.kind === 'stage') {
+        checkText(step.args.join(' '), step.line, `! ${step.verb}`)
         if (!place) continue
         const allowed = place.stage[step.verb]
         if (!allowed) {
@@ -64,6 +114,19 @@ export function compile(source: string, world: World): CompileResult {
         interactionIds.add(step.id)
         for (const prop of component.props.required) {
           if (!step.props[prop]) report(step.line, 'missing-prop', `${step.component} needs "${prop}: ...".`)
+        }
+        for (const [prop, value] of Object.entries(step.props)) checkText(value, step.line, `${step.id} ${prop}`)
+        if (step.component === 'lessonml:numeric' && step.props.answer) {
+          checkExpr(step.props.answer, step.line, `${step.id} answer`)
+          if (step.props.tolerance && !/^\d+(\.\d+)?%?$/.test(step.props.tolerance.trim())) report(step.line, 'bad-tolerance', `${step.id}: tolerance is a number ("0.5") or a percentage ("2%").`)
+        }
+        if (step.component === 'lessonml:explore') {
+          const { controls, errors } = parseControls(step.props.controls || '')
+          errors.forEach((message) => report(step.line, 'bad-controls', `${step.id}: ${message}.`))
+          for (const control of controls) {
+            if (!declared.has(control.name)) report(step.line, 'undeclared-state', `${step.id}: control "${control.name}" must be a state variable (formulas cannot be moved).`, closest(control.name, [...declared]))
+          }
+          if (step.props.goal) checkExpr(step.props.goal, step.line, `${step.id} goal`)
         }
         const known = [...component.props.required, ...component.props.optional]
         for (const prop of Object.keys(step.props)) {
@@ -90,11 +153,12 @@ export function compile(source: string, world: World): CompileResult {
               else if (!component.facets.includes(action.facet as never)) report(action.line, 'facet-not-produced', `${step.component} cannot produce "${action.facet}" evidence. It produces: ${component.facets.join(', ')}.`)
             } else if (action.kind === 'set') {
               if (!declared.has(action.variable || '')) report(action.line, 'undeclared-state', `state "${action.variable}" is not declared. Add it under "state:" in the front matter.`, closest(action.variable || '', [...declared]))
+              checkExpr(action.expr || '', action.line, `set ${action.variable}`)
             } else if (action.say) checkLine(action.say)
           }
         }
       } else if (step.kind === 'branch') {
-        if (!declared.has(step.condition.variable)) report(step.line, 'undeclared-state', `state "${step.condition.variable}" is not declared. Add it under "state:" in the front matter.`, closest(step.condition.variable, [...declared]))
+        checkExpr(step.condition, step.line, 'if')
         checkSteps(step.steps, placeKey)
       }
     }

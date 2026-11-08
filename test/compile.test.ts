@@ -38,7 +38,7 @@ test('an interaction carries options, hints, handlers and state changes', () => 
   assert.equal(interaction.handlers.wrong[0].say?.speaker, 'harbor:priya')
   const branch = lesson.scenes[0].steps.find((step) => step.kind === 'branch')
   assert.ok(branch && branch.kind === 'branch')
-  assert.deepEqual(branch.condition, { variable: 'trust.priya', op: '>', value: 0 })
+  assert.equal(branch.condition, 'trust.priya > 0')
   assert.equal(branch.steps.length, 3)
 })
 

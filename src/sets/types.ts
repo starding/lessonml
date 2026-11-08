@@ -31,6 +31,9 @@ export interface SetRuntime {
   scan: () => void
   // Per-player scratch state (a set definition is shared by every player).
   memo: Record<string, unknown>
+  // Live values: {=expr} in text, and expressions with state overridden.
+  interpolate: (text: string) => string
+  evaluate: (source: string, overrides?: Record<string, number>) => number
 }
 
 export interface SetDefinition {

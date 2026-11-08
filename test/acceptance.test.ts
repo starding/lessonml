@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
-import { compile, defaultReviewer, getSet, LessonSession, type World } from '../src/index.js'
+import { compile, defaultReviewer, getSet, LessonSession, type Frame, type World } from '../src/index.js'
 import { simulate } from '../src/mcp/simulate.js'
 
 // Cross-subject acceptance (SPEC.md §1): every example lesson, language and
@@ -52,4 +52,24 @@ test('the default reviewer checks required words and length, with feedback', asy
   assert.deepEqual(await defaultReviewer({ ...input, text: 'Both are half.' }), { pass: false, feedback: 'Use: numerator, denominator' })
   assert.equal((await defaultReviewer({ ...input, text: 'The numerator and denominator doubled.' })).pass, false)
   assert.equal((await defaultReviewer({ ...input, text: 'Multiplying the numerator and the denominator by two keeps the same amount.' })).pass, true)
+})
+
+test('the compound-interest lesson computes: live text, numeric checks, explore goals', () => {
+  const world = JSON.parse(fs.readFileSync('examples/classroom/world.json', 'utf8')) as World
+  const { lesson, ok } = compile(fs.readFileSync('examples/classroom/compound-interest.lml', 'utf8'), world)
+  assert.ok(ok)
+  const session = new LessonSession(lesson)
+  while (session.frame.kind !== 'interaction') session.next()
+  assert.equal(session.numeric('$2,500').correct, false)
+  const frame = session.frame
+  assert.ok(frame.kind === 'interaction' && frame.feedback?.direction === 'high')
+  assert.equal(session.numeric('1650').correct, true, 'within 5%')
+  session.next()
+  const reveal = session.frame as Frame
+  assert.ok(reveal.kind === 'line')
+  assert.match(session.interpolate(reveal.step.text), /^1,629 dollars\. The extra 129/)
+  session.next()
+  assert.equal(session.adjust('years', 20).correct, false, 'overshooting is not "just doubling"')
+  assert.equal(session.adjust('years', 14).correct, false, '1.05^14 ≈ 1.98 is not yet double')
+  assert.equal(session.adjust('years', 15).correct, true, '1.05^15 ≈ 2.08 just doubles')
 })

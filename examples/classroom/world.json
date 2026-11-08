@@ -5,25 +5,74 @@
     "lin": {
       "name": "Lin",
       "description": "Ms. Lin, a math teacher. Warm, unhurried, asks questions instead of giving answers; never says 'wrong', says 'look again'.",
-      "expressions": ["neutral", "smile", "stern", "surprised", "worried"],
-      "rig": { "id": "lin", "hair": "bob", "outfit": "blazer", "glasses": true, "colors": { "skin": "#f3d4c0", "hair": "#3b2a22", "eyes": "#5a4a3a", "cloth": "#2f6f73" } }
+      "expressions": [
+        "neutral",
+        "smile",
+        "stern",
+        "surprised",
+        "worried"
+      ],
+      "rig": {
+        "id": "lin",
+        "hair": "bob",
+        "outfit": "blazer",
+        "glasses": true,
+        "colors": {
+          "skin": "#f3d4c0",
+          "hair": "#3b2a22",
+          "eyes": "#5a4a3a",
+          "cloth": "#2f6f73"
+        }
+      }
     }
   },
   "places": {
     "classroom": {
       "name": "Classroom, morning",
-      "description": "A whiteboard on the right, Ms. Lin standing beside it, sunlight from the window.",
+      "description": "A whiteboard on the right, Ms. Lin standing beside it, sunlight from the window. '! board <text>' writes on the board (' | ' = new line, {=expr} shows live values); '! plot <formula> over <state> <from>..<to> [line <expr>]' draws a live chart under the first board line.",
       "set": "classroom",
-      "cast": { "mentor": "lin" },
+      "cast": {
+        "mentor": "lin"
+      },
       "stage": {
-        "camera": ["wide", "mentor", "board"],
-        "board": ["*"]
+        "camera": [
+          "wide",
+          "mentor",
+          "board"
+        ],
+        "board": [
+          "*"
+        ],
+        "plot": [
+          "*"
+        ]
       }
     }
   },
   "glossary": {
-    "en:numerator": { "gloss": "分子", "definition": "the number above the line in a fraction" },
-    "en:denominator": { "gloss": "分母", "definition": "the number below the line in a fraction" },
-    "en:equivalent": { "gloss": "等值的", "definition": "having the same value" }
+    "en:numerator": {
+      "gloss": "分子",
+      "definition": "the number above the line in a fraction"
+    },
+    "en:denominator": {
+      "gloss": "分母",
+      "definition": "the number below the line in a fraction"
+    },
+    "en:equivalent": {
+      "gloss": "等值的",
+      "definition": "having the same value"
+    },
+    "en:interest": {
+      "gloss": "利息",
+      "definition": "money paid for the use of money"
+    },
+    "en:compound": {
+      "gloss": "复利的；复合的",
+      "definition": "interest earned on earlier interest too"
+    },
+    "en:principal": {
+      "gloss": "本金",
+      "definition": "the money you start with"
+    }
   }
 }

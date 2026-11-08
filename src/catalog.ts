@@ -113,6 +113,22 @@ export const CORE_COMPONENTS: Record<string, ComponentEntry> = {
     facets: ['speak'],
     example: '? lessonml:speak ask-ledger\n  prompt: Ask Ledger whether it made the report up.\n  target: verify\n  on spoken: evidence speak verify'
   },
+  'lessonml:numeric': {
+    description: 'The learner types a number (and unit if asked), checked against an expression within a tolerance: estimates, calculations, predictions. Wrong values get "too high / too low", or the hint of a matching distractor.',
+    props: { required: ['prompt', 'answer'], optional: ['tolerance', 'unit', 'title'] },
+    options: { min: 0, max: 4, correct: 'none' },
+    events: ['correct', 'wrong'],
+    facets: ['compute', 'predict', 'apply'],
+    example: '? lessonml:numeric guess\n  prompt: After {=years} years at {=rate*100}%, how much is in the account?\n  answer: balance\n  tolerance: 2%\n  - 1500\n    hint: 那是单利：每年只按本金算利息。\n  on correct: evidence compute math:compound-interest'
+  },
+  'lessonml:explore': {
+    description: 'Sliders bound to state variables; the scene, formulas and live text update as the learner moves them. Solved when the goal expression becomes true. Use it to let the learner discover a relationship.',
+    props: { required: ['prompt', 'controls', 'goal'], optional: ['title'] },
+    options: null,
+    events: ['correct'],
+    facets: ['apply', 'predict', 'explain'],
+    example: '? lessonml:explore double-it\n  prompt: Move the sliders until the money doubles.\n  controls: rate 0.01..0.12 step 0.01, years 1..30 step 1\n  goal: balance >= 2 * principal\n  on correct: evidence apply math:compound-interest'
+  },
   'lessonml:write': {
     description: 'The learner writes a few sentences (a reply, an explanation of their reasoning). A reviewer supplied by the host app judges it; without one, the player checks the required words and length.',
     props: { required: ['prompt'], optional: ['targets', 'min_words', 'model'] },

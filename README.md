@@ -40,7 +40,8 @@ This is an early draft. It already includes:
 - three style packs: anime clean line, contemporary flat and ligne claire;
 - a reference interpreter and the `<lml-scene>` web component (v0.2);
 - an MCP server for the model authoring loop (v0.3);
-- subject-neutral evidence, a glossary, writing tasks with pluggable reviewers, pluggable place sets and an embedded mode, with a math lesson as the acceptance test (v0.4).
+- subject-neutral evidence, a glossary, writing tasks with pluggable reviewers, pluggable place sets and an embedded mode, with a math lesson as the acceptance test (v0.4);
+- a safe expression layer: formulas, live values in text, numeric answers with tolerance, and slider explorations with goals and live charts (v0.5). See `examples/classroom/compound-interest.lml`.
 
 The full design is in [SPEC.md](SPEC.md).
 

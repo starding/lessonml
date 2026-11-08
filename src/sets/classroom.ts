@@ -63,14 +63,83 @@ export const CLASSROOM_SET: SetDefinition = {
     </g>`
   },
   stage(frame, rt) {
-    const text = frame.stage.args.board || ''
-    if (rt.memo.board === text) return
-    rt.memo.board = text
+    const text = rt.interpolate(frame.stage.args.board || '')
+    const plot = frame.stage.args.plot || ''
+    // Redraw only when what is on the board changes (sliders call this often).
+    let plotKey = ''
+    let points: Array<[number, number]> = []
+    let spec: ReturnType<typeof parsePlot> = null
+    if (plot) {
+      spec = parsePlot(plot)
+      if (spec) {
+        const { formula, variable, from, to } = spec
+        points = Array.from({ length: 61 }, (_, i) => {
+          const x = from + (to - from) * i / 60
+          let y = NaN
+          try { y = rt.evaluate(formula, { [variable]: x }) } catch { /* drawn as a gap */ }
+          return [x, y] as [number, number]
+        })
+        let current = NaN, line = NaN
+        try { current = rt.evaluate(variable) } catch { /* not a state name */ }
+        try { if (spec.line) line = rt.evaluate(spec.line) } catch { /* ignore */ }
+        plotKey = JSON.stringify([points, current, line])
+      }
+    }
+    const key = `${text}|${plotKey}`
+    if (rt.memo.board === key) return
+    rt.memo.board = key
     const board = rt.q('#cr-board')
     if (!board) return
     const lines = text.split(' | ').filter(Boolean)
-    const size = lines.length > 2 ? 46 : 64
-    board.innerHTML = lines.map((content, index) =>
-      `<text class="cr-board-text" x="775" y="${350 - ((lines.length - 1) * size * 0.6) + index * size * 1.25}" text-anchor="middle" font-size="${size}">${escape(content)}</text>`).join('')
+    if (!spec) {
+      const size = lines.length > 2 ? 46 : 64
+      board.innerHTML = lines.map((content, index) =>
+        `<text class="cr-board-text" x="775" y="${350 - ((lines.length - 1) * size * 0.6) + index * size * 1.25}" text-anchor="middle" font-size="${size}">${escape(content)}</text>`).join('')
+      return
+    }
+    // A live chart under one line of text.
+    const box = { x: 500, y: 238, w: 590, h: 290 }
+    const finite = points.filter(([, y]) => Number.isFinite(y))
+    let current = NaN, guide = NaN
+    try { current = rt.evaluate(spec.variable) } catch { /* not a state name */ }
+    try { if (spec.line) guide = rt.evaluate(spec.line) } catch { /* ignore */ }
+    const ys = [...finite.map(([, y]) => y), ...(Number.isFinite(guide) ? [guide] : [])]
+    const yMin = Math.min(0, ...ys), yMax = Math.max(...ys) * 1.08 || 1
+    const sx = (x: number) => box.x + (x - spec!.from) / (spec!.to - spec!.from) * box.w
+    const sy = (y: number) => box.y + box.h - (y - yMin) / (yMax - yMin) * box.h
+    const path = finite.map(([x, y], i) => `${i ? 'L' : 'M'}${sx(x).toFixed(1)} ${sy(y).toFixed(1)}`).join(' ')
+    let marker = ''
+    if (Number.isFinite(current) && current >= spec.from && current <= spec.to) {
+      let value = NaN
+      try { value = rt.evaluate(spec.formula, { [spec.variable]: current }) } catch { /* ignore */ }
+      if (Number.isFinite(value)) {
+        marker = `<line x1="${sx(current)}" y1="${box.y + box.h}" x2="${sx(current)}" y2="${sy(value)}" stroke="#e5484d" stroke-width="2" stroke-dasharray="5 5"/>
+          <circle cx="${sx(current)}" cy="${sy(value)}" r="9" fill="#e5484d"/>
+          <text class="cr-board-text" x="${Math.min(sx(current) + 14, box.x + box.w - 150)}" y="${sy(value) - 14}" font-size="26" fill="#c8323a">${escape(formatValue(value))}</text>`
+      }
+    }
+    const guideLine = Number.isFinite(guide)
+      ? `<line x1="${box.x}" y1="${sy(guide)}" x2="${box.x + box.w}" y2="${sy(guide)}" stroke="#2f6fd6" stroke-width="2.5" stroke-dasharray="10 8"/>
+         <text class="cr-board-text" x="${box.x + box.w}" y="${sy(guide) - 10}" text-anchor="end" font-size="22" fill="#2f6fd6">${escape(formatValue(guide))}</text>`
+      : ''
+    board.innerHTML = `
+      ${lines[0] ? `<text class="cr-board-text" x="775" y="200" text-anchor="middle" font-size="36">${escape(lines[0])}</text>` : ''}
+      <path d="M${box.x} ${box.y} V${box.y + box.h} H${box.x + box.w}" fill="none" stroke="#1e3a6e" stroke-width="3"/>
+      <text class="cr-board-text" x="${box.x}" y="${box.y + box.h + 30}" text-anchor="middle" font-size="22">${escape(formatValue(spec.from))}</text>
+      <text class="cr-board-text" x="${box.x + box.w}" y="${box.y + box.h + 30}" text-anchor="middle" font-size="22">${escape(formatValue(spec.to))}</text>
+      <text class="cr-board-text" x="${box.x + box.w / 2}" y="${box.y + box.h + 30}" text-anchor="middle" font-size="22">${escape(spec.variable)}</text>
+      <text class="cr-board-text" x="${box.x - 10}" y="${box.y + 6}" text-anchor="end" font-size="20">${escape(formatValue(yMax))}</text>
+      ${guideLine}
+      <path d="${path}" fill="none" stroke="#1e3a6e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      ${marker}`
   }
 }
+
+// "! plot balance over years 0..30 line 2 * principal"
+export const parsePlot = (source: string) => {
+  const match = source.match(/^(.+?)\s+over\s+([A-Za-z_][\w.]*)\s+(-?[\d.]+)\.\.(-?[\d.]+)(?:\s+line\s+(.+))?$/)
+  if (!match) return null
+  return { formula: match[1].trim(), variable: match[2], from: Number(match[3]), to: Number(match[4]), line: match[5]?.trim() }
+}
+
+const formatValue = (value: number) => (Math.abs(value) >= 100 ? Math.round(value).toLocaleString('en-US') : String(Math.round(value * 100) / 100))

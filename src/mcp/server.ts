@@ -73,6 +73,10 @@ language: en
 learner_language: zh
 state:
   trust.priya: 0          # numbers only
+formulas:                 # optional: named expressions, evaluated live
+  balance: principal * (1 + rate) ^ years
+glossary:                 # optional: this lesson's sense of a term
+  pitch: 提案 | a short talk to persuade someone
 ---
 # scene <id> @<namespace>:<place>
 ! camera <shot>            # stage verbs and their values come from the place (describe_world)
@@ -87,8 +91,9 @@ NAME (expression): "Spoken line with a {target} word or {surface|lemma}."
   * the one correct option
   on correct: evidence <facet> <target>; set <state> += 1   # target: a word (en:word) or a skill id (math:fraction-equivalence)
   on wrong: NAME (expression): "reaction"
-if <state> > 0:
+if <expression>:          # e.g. trust.priya > 0 && balance > 2000
   NAME (smile): "only if the learner earned it"
+Live values anywhere in text: {=round(balance)}. Expressions: + - * / % ^, comparisons, && || !, abs sqrt exp ln log10 sin cos tan floor ceil round(x, digits) min max pow clamp, constants pi e g. No strings, no code.
 
 ## Components
 ${Object.entries(CORE_COMPONENTS).map(([id, c]) => `### ${id}\n${c.description}\nprops: ${c.props.required.join(', ')}${c.props.optional.length ? ` (optional: ${c.props.optional.join(', ')})` : ''}; events: ${c.events.join(', ')}; evidence: ${c.facets.join(', ')}\n\`\`\`\n${c.example}\n\`\`\``).join('\n\n')}
@@ -101,11 +106,12 @@ ${Object.entries(CORE_COMPONENTS).map(([id, c]) => `### ${id}\n${c.description}\
 - Let actions matter: change state on good answers and pay it off later with an if-branch.
 - Evidence facets must be ones the component can produce (see above). Use skill ids as targets for non-language subjects.
 - Give every {marked} word a gloss: in the world's glossary, or under "glossary:" in the front matter (term: 释义 | definition).
+- For math and science: put the model in "formulas:", show live values with {=…}, ask for a prediction with lessonml:numeric before revealing, and let the learner discover the relationship with lessonml:explore. Make explore goals tight enough that every solution supports what you say next.
 - A character only appears when the set shows their slot: check the place description and switch the screen or camera back before they speak.
 - Style packs (the player's drawing rules, never named in a lesson): ${Object.keys(STYLE_PACKS).join(', ')}.`
 
 export function createServer() {
-  const server = new McpServer({ name: 'lessonml', version: '0.4.0' })
+  const server = new McpServer({ name: 'lessonml', version: '0.5.0' })
 
   server.registerTool('lessonml_guide', {
     title: 'LessonML authoring guide',

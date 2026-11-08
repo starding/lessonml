@@ -93,9 +93,41 @@ glossary:
 
 Lesson entries override the world's. When a learner taps a target word, the player reports it with its gloss (`lml-word`). `lessonml_simulate` warns about marked words that have no gloss.
 
+### 3.6 Expressions and live values (v0.5)
+
+Lessons can compute. One small expression language (`src/expr.ts`) is used everywhere a value is needed. It has:
+- numbers;
+- state and formula names;
+- `+ - * / % ^`;
+- comparisons, `&& || !`;
+- the functions `abs sqrt exp ln log10 sin cos tan floor ceil round min max pow clamp`;
+- the constants `pi`, `e` and `g`.
+
+There is no member access, no strings and no assignment. A model can describe a simulation without writing code.
+
+| Where | Example |
+|---|---|
+| Formulas (front matter) | `balance: principal * (1 + rate) ^ years` |
+| Live text, in lines, prompts and board arguments | `"{=round(balance)} dollars"` |
+| Conditions | `if balance > 2 * principal && instinct > 0:` |
+| State changes | `set years += 5` |
+| Numeric answers and goals | `answer: 72 / 6`; `goal: balance >= 2 * principal` |
+
+Formulas are evaluated on demand, so live values follow the state as a learner moves a slider. The compiler rejects:
+- unknown names and functions;
+- a wrong number of arguments;
+- formulas that shadow state;
+- formula cycles.
+
+Two components use expressions:
+- **`lessonml:numeric`** checks a typed value and optional unit against an `answer` expression within a `tolerance` (`2%` or `0.5`). A wrong value gets "too high" or "too low", or the hint of a matching distractor.
+- **`lessonml:explore`** binds sliders to state (`controls: rate 0.01..0.12 step 0.01, years 1..30 step 1`). It is solved when its `goal` becomes true. `lessonml_simulate` searches the controls for a setting that meets the goal, and warns when none exists.
+
+A set can draw live props from expressions. The classroom set's `! plot <formula> over <state> <from>..<to> [line <expr>]` draws a chart that updates as the sliders move, with the current point and a guide line.
+
 ### 3.5 Acceptance
 
-`examples/` always contains at least one non-language lesson; today that is `classroom/equal-fractions.lml`. Every format change must keep every example compiling, playing to the end without warnings, and rendering (`test/acceptance.test.ts`). A change that only works for language lessons fails here, not when someone tries to teach physics.
+`examples/` always contains at least one non-language lesson; today these are `classroom/equal-fractions.lml` and `classroom/compound-interest.lml`. Every format change must keep every example compiling, playing to the end without warnings, and rendering (`test/acceptance.test.ts`). A change that only works for language lessons fails here, not when someone tries to teach physics.
 
 ## 4. IR
 
@@ -283,6 +315,7 @@ Simulate is cheap and catches structural problems. For example, it catches a cha
 | v0.2 | ✅ Interpreter (`LessonSession`) and `<lml-scene>` web component; place sets with character slots; camera and parallax |
 | v0.3 | ✅ MCP server: guide, describe_world, compile, simulate, render_preview, so a model can write, check, play and see its work |
 | v0.4 | ✅ Subject-neutral evidence (targets and facet packs); glossary; `write` with pluggable reviewers; pluggable sets; embedded mode; math acceptance lesson |
-| v0.5 | Expression layer (safe declarative formulas over state); live props bound to it; numeric answers with tolerance and units; formula typesetting; predict-then-reveal simulations |
+| v0.5 | ✅ Expression layer (formulas, live `{=…}` text, expression conditions); `numeric` with tolerance and units; `explore` sliders with goals; live charts in the classroom set |
+| v0.5.x | Formula typesetting (KaTeX); more live props (geometry, motion); a physics acceptance lesson |
 | v0.6 | Improvisation slots: lines a runtime model may improvise within a character card, state and lesson goal |
 | later | Pack registry; npm release |

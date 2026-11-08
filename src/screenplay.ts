@@ -8,7 +8,8 @@ import type { Action, BranchStep, Diagnostic, InteractionOption, InteractionStep
 
 interface SourceLine { no: number; indent: number; text: string }
 
-const WORD_MARK = /\{([^}|]+)(?:\|([^}]+))?\}/g
+// {word} or {surface|lemma}; {=expression} is live text, not a target word.
+const WORD_MARK = /\{(?!=)([^}|]+)(?:\|([^}]+))?\}/g
 
 // "{disclosure}" → text "disclosure", word "disclosure"; "{verified|verify}" →
 // text "verified", word "verify".
@@ -28,8 +29,8 @@ const unquote = (value: string) => {
 
 const SPEAKER_LINE = /^([A-Z][A-Z0-9_]*)\s*(?:\(([a-z-]+)\))?\s*:\s*(.+)$/
 const SCENE_LINE = /^#\s*scene\s+([a-z0-9-]+)\s+@([a-z0-9-]+:[a-z0-9/-]+)\s*$/
-const CONDITION = /^if\s+([a-z0-9_.]+)\s*(>=|<=|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)\s*:\s*$/
-const SET_ACTION = /^set\s+([a-z0-9_.]+)\s*(\+=|-=|=)\s*(-?\d+(?:\.\d+)?)$/
+const CONDITION = /^if\s+(.+?)\s*:\s*$/
+const SET_ACTION = /^set\s+([A-Za-z_][\w.]*)\s*(\+=|-=|=)\s*(.+)$/
 
 export interface ParseResult {
   lesson: Lesson
@@ -38,14 +39,14 @@ export interface ParseResult {
 
 export function parseScreenplay(source: string): ParseResult {
   const diagnostics: Diagnostic[] = []
-  const lesson: Lesson = { id: '', world: '', language: 'en', state: {}, glossary: {}, scenes: [] }
+  const lesson: Lesson = { id: '', world: '', language: 'en', state: {}, formulas: {}, glossary: {}, scenes: [] }
   const rawLines = source.replace(/\r\n/g, '\n').split('\n')
   let cursor = 0
 
   // ── Front matter ──────────────────────────────────────────────────────────
   if (rawLines[0]?.trim() === '---') {
     cursor = 1
-    let section: 'state' | 'glossary' | null = null
+    let section: 'state' | 'glossary' | 'formulas' | null = null
     for (; cursor < rawLines.length && rawLines[cursor].trim() !== '---'; cursor++) {
       const raw = rawLines[cursor]
       if (!raw.trim() || raw.trim().startsWith('//')) continue
@@ -61,18 +62,22 @@ export function parseScreenplay(source: string): ParseResult {
         lesson.glossary[key] = definition ? { gloss, definition } : { gloss }
         continue
       }
+      if (nested && section === 'formulas') {
+        lesson.formulas[key] = value.trim()
+        continue
+      }
       if (nested && section === 'state') {
         const number = Number(value)
         if (Number.isNaN(number)) diagnostics.push({ line: cursor + 1, code: 'state-value', message: `state ${key} must start as a number, got "${value}".` })
         else lesson.state[key] = number
         continue
       }
-      section = key === 'state' || key === 'glossary' ? key : null
+      section = key === 'state' || key === 'glossary' || key === 'formulas' ? key : null
       if (key === 'lesson') lesson.id = value.trim()
       else if (key === 'world') lesson.world = value.trim()
       else if (key === 'language') lesson.language = value.trim()
       else if (key === 'learner_language') lesson.learnerLanguage = value.trim()
-      else if (!section) diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `unknown key "${key}".`, suggestions: ['lesson', 'world', 'language', 'learner_language', 'state', 'glossary'] })
+      else if (!section) diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `unknown key "${key}".`, suggestions: ['lesson', 'world', 'language', 'learner_language', 'state', 'formulas', 'glossary'] })
     }
     cursor += 1
   }
@@ -102,7 +107,7 @@ export function parseScreenplay(source: string): ParseResult {
     const evidence = line.text.match(/^evidence\s+([a-z-]+)\s+([A-Za-z0-9:'/-]+)$/)
     if (evidence) return { kind: 'evidence', line: line.no, facet: evidence[1], target: evidence[2] }
     const set = line.text.match(SET_ACTION)
-    if (set) return { kind: 'set', line: line.no, variable: set[1], op: set[2] as Action['op'], value: Number(set[3]) }
+    if (set) return { kind: 'set', line: line.no, variable: set[1], op: set[2] as Action['op'], expr: set[3].trim() }
     const say = parseLine(line)
     if (say) return { kind: 'say', line: line.no, say }
     return null
@@ -146,7 +151,7 @@ export function parseScreenplay(source: string): ParseResult {
         for (const actionLine of [...inlineParts, ...nested]) {
           const action = parseAction(actionLine)
           if (action) actions.push(action)
-          else diagnostics.push({ line: actionLine.no, code: 'action', message: `cannot read action "${actionLine.text}".`, suggestions: ['evidence <facet> <target>', 'set <variable> += <number>', 'NAME (expression): "line"'] })
+          else diagnostics.push({ line: actionLine.no, code: 'action', message: `cannot read action "${actionLine.text}".`, suggestions: ['evidence <facet> <target>', 'set <variable> += <expression>', 'NAME (expression): "line"'] })
         }
         step.handlers[handler[1]] = [...(step.handlers[handler[1]] || []), ...actions]
         continue
@@ -198,7 +203,7 @@ export function parseScreenplay(source: string): ParseResult {
         const branch: BranchStep = {
           kind: 'branch',
           line: line.no,
-          condition: { variable: condition[1], op: condition[2] as BranchStep['condition']['op'], value: Number(condition[3]) },
+          condition: condition[1],
           steps: parseBlock(index + 1, next, indent + 2)
         }
         steps.push(branch)
@@ -218,7 +223,7 @@ export function parseScreenplay(source: string): ParseResult {
         line: line.no,
         code: 'unknown-line',
         message: `cannot read "${line.text}".`,
-        suggestions: ['NAME (expression): "spoken line"', '> narration', '! verb args', '? component id', 'if variable > 0:']
+        suggestions: ['NAME (expression): "spoken line"', '> narration', '! verb args', '? component id', 'if <expression>:']
       })
       index++
     }

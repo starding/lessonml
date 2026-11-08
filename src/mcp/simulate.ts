@@ -9,8 +9,13 @@ import { LessonSession, type Frame } from '../player/session.js'
 type Answer = number | string | boolean
 
 // The answer a model would give on a first, correct try.
-export const correctAnswer = (frame: Extract<Frame, { kind: 'interaction' }>): Answer => {
+export const correctAnswer = (frame: Extract<Frame, { kind: 'interaction' }>, session: LessonSession): Answer | null => {
   const step = frame.step
+  if (step.component === 'lessonml:numeric') return `${session.evaluate(step.props.answer)}${step.props.unit ? ` ${step.props.unit}` : ''}`
+  if (step.component === 'lessonml:explore') {
+    const found = session.findGoal()
+    return found ? Object.entries(found).map(([name, value]) => `${name}=${value}`).join(',') : null
+  }
   if (step.component === 'lessonml:cloze') return step.props.answer || ''
   if (step.component === 'lessonml:speak' || step.component === 'lessonml:write') return true
   return Math.max(0, step.options.findIndex((option) => option.correct))
@@ -20,6 +25,15 @@ export const answerFrame = (session: LessonSession, answer: Answer) => {
   const frame = session.frame
   if (frame.kind !== 'interaction') throw new Error('no interaction')
   if (typeof answer === 'boolean') return frame.step.component === 'lessonml:write' ? session.reviewed(answer, answer ? undefined : 'The reviewer asked for a revision.') : session.spoke(answer)
+  if (frame.step.component === 'lessonml:numeric') return session.numeric(String(answer))
+  if (frame.step.component === 'lessonml:explore') {
+    let last = { correct: false, evidence: [] as ReturnType<LessonSession['numeric']>['evidence'] }
+    for (const pair of String(answer).split(',')) {
+      const [name, value] = pair.split('=')
+      if (session.frame.kind === 'interaction' && !session.frame.solved) last = session.adjust(name.trim(), Number(value))
+    }
+    return last
+  }
   if (typeof answer === 'string') return session.type(answer)
   return session.choose(answer)
 }
@@ -36,7 +50,7 @@ const collectBranches = (steps: Step[], out: Array<{ line: number; label: string
     const inside = new Set<Step>()
     const gather = (list: Step[]) => list.forEach((child) => { inside.add(child); if (child.kind === 'branch') gather(child.steps) })
     gather(step.steps)
-    out.push({ line: step.line, label: `if ${step.condition.variable} ${step.condition.op} ${step.condition.value}`, steps: inside })
+    out.push({ line: step.line, label: `if ${step.condition}`, steps: inside })
     collectBranches(step.steps, out)
   }
 }
@@ -44,6 +58,7 @@ const collectBranches = (steps: Step[], out: Array<{ line: number; label: string
 export function simulate(lesson: Lesson, answers: Record<string, Answer[]>, world?: World): string {
   const session = new LessonSession(lesson)
   const out: string[] = []
+  const unreachable: string[] = []
   const seen = new Set<Step>()
   const words = new Set<string>()
   let guard = 0
@@ -54,38 +69,45 @@ export function simulate(lesson: Lesson, answers: Record<string, Answer[]>, worl
     if (frame.kind === 'line') {
       frame.step.words.forEach((word) => words.add(word))
       const who = frame.step.speaker ? `${frame.step.speaker.split(':')[1].toUpperCase()}${frame.step.expression ? ` (${frame.step.expression})` : ''}: ` : '> '
-      out.push(`#${frame.index} ${stageLabel(frame)} ${who}${frame.step.text}${frame.step.words.length ? `   {${frame.step.words.join(', ')}}` : ''}`)
+      out.push(`#${frame.index} ${stageLabel(frame)} ${who}${session.interpolate(frame.step.text)}${frame.step.words.length ? `   {${frame.step.words.join(', ')}}` : ''}`)
     } else {
       frame.step.words.forEach((word) => words.add(word))
-      out.push(`#${frame.index} ${stageLabel(frame)} ? ${frame.step.component} ${frame.step.id}: ${frame.step.props.prompt || frame.step.props.line || ''}`)
+      out.push(`#${frame.index} ${stageLabel(frame)} ? ${frame.step.component} ${frame.step.id}: ${session.interpolate(frame.step.props.prompt || frame.step.props.line || '')}`)
       const planned = [...(answers[frame.step.id] || [])]
       let tries = 0
       while (!(session.frame as Extract<Frame, { kind: 'interaction' }>).solved && tries++ < 8) {
-        const answer = planned.length ? planned.shift()! : correctAnswer(frame)
+        const answer = planned.length ? planned.shift()! : correctAnswer(frame, session)
+        if (answer === null) {
+          unreachable.push(frame.step.id)
+          break
+        }
         const result = answerFrame(session, answer)
         const current = session.frame as Extract<Frame, { kind: 'interaction' }>
         const label = typeof answer === 'number' ? `option ${answer} "${frame.step.options[answer]?.text ?? '?'}"` : JSON.stringify(answer)
         const said = current.feedback?.line ? ` → ${current.feedback.line.speaker?.split(':')[1].toUpperCase() ?? ''}: "${current.feedback.line.text}"` : ''
-        const hint = !result.correct && current.feedback?.hint ? ` hint: ${current.feedback.hint}` : ''
+        const hint = !result.correct && (current.feedback?.hint || current.feedback?.direction) ? ` hint: ${current.feedback.hint || `too ${current.feedback.direction}`}` : ''
         const evidence = result.evidence.map((event) => `evidence ${event.facet} ${event.target}${event.firstTry ? ' (first try)' : ''}`).join(', ')
         out.push(`     ${result.correct ? '✓' : '✗'} ${label}${hint}${said}${evidence ? `; ${evidence}` : ''}; state ${JSON.stringify(session.state)}`)
       }
     }
     if (!session.next()) break
   }
+  for (const id of unreachable) out.push(`stopped: ${id}'s goal cannot be reached with its controls`)
   const branches: Array<{ line: number; label: string; steps: Set<Step> }> = []
   lesson.scenes.forEach((scene) => collectBranches(scene.steps, branches))
   const interactions = lesson.scenes.flatMap((scene) => scene.steps).filter((step) => step.kind === 'interaction')
   const warnings: string[] = []
-  for (const [variable, initial] of Object.entries(lesson.state)) {
-    if (session.state[variable] === initial && !interactions.some((step) => step.kind === 'interaction' && Object.values(step.handlers).flat().some((action) => action.variable === variable))) {
-      warnings.push(`state ${variable} is declared but nothing changes it`)
-    }
+  // A state variable nothing reads or changes is noise.
+  const body = JSON.stringify({ scenes: lesson.scenes, formulas: lesson.formulas })
+  for (const variable of Object.keys(lesson.state)) {
+    const used = new RegExp(`(^|[^\\w.])${variable.replace(/\./g, '\\.')}(?![\\w.])`).test(body)
+    if (!used) warnings.push(`state ${variable} is declared but nothing reads or changes it`)
   }
   for (const step of interactions) {
     if (step.kind === 'interaction' && !Object.values(step.handlers).flat().some((action) => action.kind === 'evidence')) warnings.push(`${step.id} produces no evidence; add "on correct: evidence <facet> <target>"`)
   }
   if (interactions.length === 0) warnings.push('no interactions: the learner never acts')
+  unreachable.forEach((id) => warnings.push(`${id}: no setting of the controls meets the goal; widen the ranges or change the goal`))
   for (const scene of lesson.scenes) {
     const place = world?.places[scene.place.split(':')[1]]
     if (world && !getSet(place?.set)) warnings.push(`@${scene.place} has no playable set ("set": "${place?.set ?? ''}"); the player knows: ${registeredSets().join(', ')}`)
