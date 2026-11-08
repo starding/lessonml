@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LessonML · Player</title>
+<style>
+  html, body { margin:0; height:100%; background:#05060d; color:#eef1ff; font-family:-apple-system,"PingFang SC",Arial,sans-serif; overflow:hidden; }
+  lml-scene { position:fixed; inset:0; height:100%; }
+  .bar { position:fixed; top:10px; left:12px; right:12px; display:flex; gap:6px; flex-wrap:wrap; z-index:2; align-items:center; }
+  .bar a, .bar button { border:1px solid rgba(255,255,255,.18); background:rgba(9,11,26,.7); color:#eef1ff; border-radius:999px; padding:6px 12px; font-size:12px; cursor:pointer; text-decoration:none; backdrop-filter:blur(8px); }
+  .bar button.on { background:#eef1ff; color:#0b0d1a; }
+  .log { position:fixed; top:46px; right:12px; z-index:2; font:11px/1.5 ui-monospace,Menlo,monospace; color:#5fe3ff; text-align:right; pointer-events:none; }
+</style>
+</head>
+<body>
+<div class="bar"><a href="./">← 画风对比</a><span id="styles"></span></div>
+<div class="log" id="log"></div>
+<lml-scene id="scene" src="../examples/harbor/compliance-call.lml" world="../examples/harbor/world.json" style-pack="anime-clean"></lml-scene>
+<script type="module">
+import '../dist/src/player/element.js'
+import { STYLE_PACKS } from '../dist/src/index.js'
+const scene = document.getElementById('scene')
+const styles = document.getElementById('styles')
+const draw = () => {
+  styles.innerHTML = Object.values(STYLE_PACKS).map((style) => `<button data-id="${style.id}" class="${scene.getAttribute('style-pack') === style.id ? 'on' : ''}">${style.nameZh}</button>`).join(' ')
+  styles.querySelectorAll('button').forEach((button) => button.onclick = () => { scene.setAttribute('style-pack', button.dataset.id); draw() })
+}
+draw()
+const log = document.getElementById('log')
+scene.addEventListener('lml-evidence', (event) => { log.innerHTML += `evidence · ${event.detail.facet} ${event.detail.word}${event.detail.firstTry ? ' (first try)' : ''}<br>` })
+scene.addEventListener('lml-state', (event) => { log.innerHTML += `state · ${JSON.stringify(event.detail)}<br>` })
+scene.addEventListener('lml-word', (event) => { log.innerHTML += `word · ${event.detail.word}<br>` })
+scene.focus()
+</script>
+</body>
+</html>

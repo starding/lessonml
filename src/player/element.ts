@@ -1,0 +1,576 @@
+// <lml-scene>: plays a LessonML lesson in any web page (SPEC.md §8, v0.2).
+//
+//   <script type="module" src="lessonml/dist/src/player/element.js"></script>
+//   <lml-scene src="lesson.lml" world="world.json" style-pack="anime-clean"></lml-scene>
+//
+// The element draws; LessonSession decides. Navigation follows one grammar:
+// swipe up / wheel / ↓ / Space moves on, ↑ goes back, tapping looks closer.
+// Events: lml-evidence (each evidence event), lml-state (state after an
+// answer), lml-word (a target word was tapped), lml-end, lml-error.
+
+import { compile, formatDiagnostics } from '../validate.js'
+import type { World } from '../catalog.js'
+import type { InteractionStep, LineStep } from '../ir.js'
+import { STYLE_PACKS } from '../rig/styles.js'
+import { setExpression, setEyes, setMouth } from '../rig/controls.js'
+import { LessonSession, type Frame } from './session.js'
+import { buildHarborOfficeSvg, HARBOR_SHOTS, logOptionsMarkup, type HarborContext } from '../sets/harbor-office.js'
+
+const UI = {
+  en: { next: 'Swipe up to continue ↑', blocked: 'Solve it to continue', solveHere: 'Tap the answer on the screen', end: 'End of lesson', replay: 'Play again', check: 'Check', say: 'Say it', listening: 'Listening…', typeInstead: 'Type what you would say', tapForTranslation: 'Tap for translation', move: 'Your move' },
+  zh: { next: '上滑继续 ↑', blocked: '完成这一关后上滑继续', solveHere: '在屏幕上点出答案', end: '本课完', replay: '再看一遍', check: '确定', say: '开口说', listening: '正在听…', typeInstead: '也可以打出你要说的话', tapForTranslation: '轻触对白看中文', move: '轮到你了' }
+}
+
+const GLOW: Record<string, string> = { call: '#ffd2a8', share: '#e6eeff', logs: '#5fe3ff', search: '#e6eeff' }
+const TILT: Record<string, number> = { neutral: 0, smile: 1.5, stern: -2, surprised: 0, worried: 2.5 }
+
+const CSS = `
+:host { display:block; position:relative; height:100%; min-height:420px; overflow:hidden; background:#05060d; color:#eef1ff;
+  font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif; -webkit-user-select:none; user-select:none; touch-action:none; }
+svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%); }
+.scan { position:absolute; left:0; right:0; height:140px; top:-140px; pointer-events:none; background:linear-gradient(transparent, rgba(95,227,255,.28), transparent); }
+.scan.run { animation:scan 1.3s ease-in-out; }
+@keyframes scan { to { top:110%; } }
+.bottom { position:absolute; left:12px; right:12px; bottom:10px; max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:10px; }
+.box { position:relative; border-radius:20px; padding:20px 18px 12px; background:rgba(9,11,26,.8); border:1px solid rgba(255,255,255,.12);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); box-shadow:0 18px 50px rgba(0,0,0,.45); }
+.box.system { border-color:rgba(95,227,255,.55); }
+.tag { position:absolute; top:-12px; left:16px; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:800; letter-spacing:.08em; background:#2a2f55; color:#fff; }
+.tag:empty { display:none; }
+.box.system .tag { background:#0c2a33; color:#5fe3ff; border:1px solid rgba(95,227,255,.5); font-family:ui-monospace,Menlo,monospace; }
+.text { margin:0; font-size:17px; line-height:1.55; min-height:3.1em; }
+.box.system .text { font-family:ui-monospace,Menlo,monospace; font-size:15.5px; color:#c9f6ff; }
+.text .h { visibility:hidden; }
+.text b { color:#ffb27a; border-bottom:1.5px dashed rgba(255,178,122,.6); cursor:pointer; font-weight:700; }
+.translation { margin:8px 0 0; font-size:14px; line-height:1.6; color:#9aa3c7; display:none; }
+.box.open .translation { display:block; }
+.foot { margin-top:8px; font-size:12px; color:rgba(154,163,199,.8); min-height:1em; }
+.hint { align-self:center; border:0; background:transparent; color:rgba(238,241,255,.72); font-size:12px; padding:4px 8px; cursor:pointer; }
+.panel { display:flex; flex-direction:column; gap:8px; }
+.panel:empty { display:none; }
+.panel button.option { text-align:left; border-radius:14px; padding:12px 14px; font-size:15px; line-height:1.45; cursor:pointer;
+  background:rgba(20,23,41,.92); color:#eef1ff; border:1px solid rgba(255,255,255,.14); }
+.panel button.option.wrong { border-color:#ff6b6b; color:#c9cbe0; }
+.panel button.option.right { border-color:#5fe3ff; }
+.panel .row { display:flex; gap:8px; }
+.panel input { flex:1; border-radius:12px; border:1px solid rgba(255,255,255,.2); background:rgba(9,11,26,.9); color:#fff; font-size:16px; padding:10px 12px; }
+.panel .act { border-radius:12px; border:0; background:#eef1ff; color:#0b0d1a; font-weight:700; padding:10px 16px; cursor:pointer; }
+.panel .line { font-family:ui-monospace,Menlo,monospace; font-size:14px; background:rgba(9,17,32,.92); border:1px solid rgba(95,227,255,.3); border-radius:12px; padding:10px 12px; color:#c9f6ff; }
+.end { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:rgba(5,6,13,.6); }
+.end h2 { margin:0; font-size:34px; letter-spacing:.14em; }
+.end button { border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.06); color:#fff; border-radius:999px; padding:10px 22px; font-size:14px; cursor:pointer; }
+.errors { position:absolute; inset:16px; overflow:auto; margin:0; white-space:pre-wrap; font:13px/1.6 ui-monospace,Menlo,monospace; color:#ffb4b4; }
+`
+
+type Ui = typeof UI.en
+
+export class LmlSceneElement extends HTMLElement {
+  static observedAttributes = ['src', 'world', 'style-pack']
+
+  private root: ShadowRoot
+  private svg!: SVGSVGElement
+  private bottom!: HTMLDivElement
+  private session: LessonSession | null = null
+  private world: World | null = null
+  private ui: Ui = UI.en
+  private alive = false
+  private timers: number[] = []
+  private frameId = 0
+  private typingTimer = 0
+  private typing: { done: () => void } | null = null
+  private talking: string | null = null
+  private shownSearch = ''
+  private engine = {
+    size: { w: 1, h: 1 }, bottomInset: 220,
+    camera: { s: 1, x: 0, y: 0, ts: 1, tx: 0, ty: 0, k: 0.6 },
+    shot: 'wide', directed: false, snapped: false,
+    pointer: { x: 0, y: 0, sx: 0, sy: 0 }, shake: 0,
+    expressions: {} as Record<string, string>
+  }
+
+  constructor() {
+    super()
+    this.root = this.attachShadow({ mode: 'open' })
+  }
+
+  connectedCallback() {
+    this.alive = true
+    this.root.innerHTML = `<style>${CSS}</style><svg class="hs-root" xmlns="http://www.w3.org/2000/svg"></svg><div class="vignette"></div><div class="scan"></div><div class="bottom"></div>`
+    this.svg = this.root.querySelector('svg')!
+    this.bottom = this.root.querySelector('.bottom')!
+    new ResizeObserver(() => this.resize()).observe(this)
+    new ResizeObserver(() => { this.engine.bottomInset = this.bottom.offsetHeight + 24; this.fit(false) }).observe(this.bottom)
+    this.bindInput()
+    this.startLoops()
+    void this.loadFromAttributes()
+  }
+
+  disconnectedCallback() {
+    this.alive = false
+    cancelAnimationFrame(this.frameId)
+    this.timers.forEach((timer) => clearTimeout(timer))
+    clearInterval(this.typingTimer)
+  }
+
+  attributeChangedCallback(name: string, previous: string | null, value: string | null) {
+    if (!this.isConnected || previous === value) return
+    if (name === 'style-pack') this.buildSet()
+    else void this.loadFromAttributes()
+  }
+
+  // Load a lesson directly (screenplay text + world catalog).
+  load(source: string, world: World) {
+    const result = compile(source, world)
+    if (!result.ok) {
+      this.root.querySelector('.errors')?.remove()
+      const pre = document.createElement('pre')
+      pre.className = 'errors'
+      pre.textContent = formatDiagnostics(result.diagnostics)
+      this.root.appendChild(pre)
+      this.dispatchEvent(new CustomEvent('lml-error', { detail: result.diagnostics }))
+      return
+    }
+    this.world = world
+    this.session = new LessonSession(result.lesson)
+    this.ui = result.lesson.learnerLanguage?.startsWith('zh') ? UI.zh : UI.en
+    this.engine.directed = false
+    this.engine.snapped = false
+    this.buildSet()
+    this.render()
+  }
+
+  private async loadFromAttributes() {
+    const src = this.getAttribute('src')
+    const worldUrl = this.getAttribute('world')
+    if (!src || !worldUrl) return
+    const [source, world] = await Promise.all([
+      fetch(new URL(src, document.baseURI)).then((response) => response.text()),
+      fetch(new URL(worldUrl, document.baseURI)).then((response) => response.json())
+    ])
+    this.load(source, world as World)
+  }
+
+  // ── Set ───────────────────────────────────────────────────────────────────
+  private castMember(characterKey: string | undefined) {
+    if (!characterKey || !this.world) return undefined
+    const entry = this.world.characters[characterKey]
+    return entry ? { spec: entry.rig, name: entry.name } : undefined
+  }
+
+  private buildSet() {
+    if (!this.session || !this.world) return
+    const placeKey = this.session.frame.stage.place.split(':')[1]
+    const place = this.world.places[placeKey]
+    const style = STYLE_PACKS[this.getAttribute('style-pack') || 'anime-clean'] || STYLE_PACKS['anime-clean']
+    const ctx: HarborContext = { style, cast: { call: this.castMember(place?.cast?.call), tile: this.castMember(place?.cast?.tile) } }
+    this.svg.innerHTML = buildHarborOfficeSvg(ctx)
+    this.shownSearch = ''
+    this.engine.shot = this.engine.directed ? this.engine.shot : 'wide'
+    this.resize()
+    this.render()
+  }
+
+  private q<T extends Element = SVGElement>(selector: string) { return this.svg.querySelector(selector) as T | null }
+  private characters(key: string) { return Array.from(this.svg.querySelectorAll(`[data-character="${key}"]`)) }
+  private keyOf(id: string | null) { return id ? id.split(':')[1] : null }
+
+  // ── Camera ────────────────────────────────────────────────────────────────
+  private resize() {
+    this.engine.size = { w: this.clientWidth || 1, h: this.clientHeight || 1 }
+    this.svg.setAttribute('viewBox', `0 0 ${this.engine.size.w} ${this.engine.size.h}`)
+    this.fit(!this.engine.snapped)
+    this.engine.snapped = true
+  }
+
+  private fit(snap: boolean) {
+    const e = this.engine
+    const rect = HARBOR_SHOTS[e.shot] || HARBOR_SHOTS.wide
+    const top = 12
+    const availableWidth = e.size.w - 16
+    const availableHeight = Math.max(140, e.size.h - top - e.bottomInset)
+    const s = Math.min(availableWidth / rect.w, availableHeight / rect.h)
+    Object.assign(e.camera, { ts: s, tx: e.size.w / 2 - s * (rect.x + rect.w / 2), ty: top + availableHeight / 2 - s * (rect.y + rect.h / 2) })
+    if (snap) Object.assign(e.camera, { s: e.camera.ts, x: e.camera.tx, y: e.camera.ty })
+  }
+
+  // ── Frame ─────────────────────────────────────────────────────────────────
+  private render() {
+    const session = this.session
+    if (!session || !this.svg.firstChild) return
+    const frame = session.frame
+    const stage = frame.stage
+    const screen = stage.screen || 'call'
+    const effects = new Set(stage.effects)
+
+    for (const name of ['call', 'share', 'logs', 'search']) {
+      const group = this.q(`#hs-v-${name}`)
+      if (!group) continue
+      group.style.opacity = name === screen ? '1' : '0'
+      group.style.pointerEvents = name === screen ? 'auto' : 'none'
+    }
+    const show = (selector: string, on: boolean, value = '1') => { const node = this.q(selector); if (node) node.style.opacity = on ? value : '0' }
+    show('#hs-pip', screen !== 'call')
+    show('#hs-typing', effects.has('typing'))
+    show('#hs-phoneScreen', effects.has('phone') || effects.has('mail'), '0.55')
+    show('#hs-rule', effects.has('scan') || effects.has('rule'))
+    const mail = this.q('#hs-mail')
+    if (mail) { mail.style.transform = effects.has('mail') ? 'translateY(0)' : 'translateY(-140px)'; mail.style.opacity = effects.has('mail') ? '1' : '0' }
+    if (effects.has('shake')) this.engine.shake = 14
+    if (effects.has('scan')) { const scan = this.root.querySelector('.scan')!; scan.classList.remove('run'); void (scan as HTMLElement).offsetWidth; scan.classList.add('run') }
+    let glow = effects.has('mail') ? '#ff5a5a' : GLOW[screen] || GLOW.call
+
+    // The monitor's search: typed once per query.
+    const query = stage.args.search || ''
+    if (screen === 'search' && query && query !== this.shownSearch) {
+      this.shownSearch = query
+      this.typeSearch(query)
+    }
+    if (screen === 'search' && query) glow = '#ff5a5a'
+    for (const selector of ['#hs-glowStop', '#hs-glowStop2']) { const stop = this.q(selector); if (stop) stop.style.stopColor = glow }
+
+    for (const [id, expression] of Object.entries(stage.expressions)) {
+      const key = this.keyOf(id)!
+      this.engine.expressions[key] = expression
+      if (this.talking !== key) this.characters(key).forEach((root) => setExpression(root, expression))
+    }
+
+    this.engine.shot = stage.camera || 'screen'
+    this.engine.camera.k = this.engine.directed ? 2.6 : 0.6
+    this.engine.directed = true
+    this.fit(false)
+
+    this.renderSurface(frame, screen)
+    this.renderBottom(frame)
+  }
+
+  // pick-evidence on the logs screen is played on the monitor itself.
+  private inScene(frame: Frame, screen: string) {
+    return frame.kind === 'interaction' && frame.step.component === 'lessonml:pick-evidence' && screen === 'logs'
+  }
+
+  private renderSurface(frame: Frame, screen: string) {
+    const host = this.q('#hs-logOptions')
+    if (!host) return
+    if (!this.inScene(frame, screen) || frame.kind !== 'interaction') {
+      host.querySelectorAll('.opt').forEach((option) => option.classList.remove('live'))
+      return
+    }
+    const key = frame.step.id
+    if (host.getAttribute('data-for') !== key) {
+      host.innerHTML = logOptionsMarkup(frame.step.options.map((option) => option.text))
+      host.setAttribute('data-for', key)
+    }
+    host.querySelectorAll<SVGElement>('.opt').forEach((option) => {
+      const index = Number(option.dataset.i)
+      option.classList.toggle('live', !frame.solved)
+      option.classList.toggle('right', frame.solved && frame.step.options[index]?.correct)
+      option.classList.toggle('wrong', !frame.solved && frame.misses[frame.misses.length - 1] === index)
+    })
+  }
+
+  private typeSearch(query: string) {
+    const text = this.q('#hs-searchText')
+    const result = this.q('#hs-searchResult')
+    const echo = this.q('#hs-searchEcho')
+    if (!text || !result) return
+    if (echo) echo.textContent = `“${query}”.`
+    result.style.opacity = '0'
+    let typed = 0
+    const tick = () => {
+      if (!this.alive || this.shownSearch !== query) return
+      text.textContent = query.slice(0, ++typed)
+      if (typed < query.length) this.timers.push(window.setTimeout(tick, 45))
+      else this.timers.push(window.setTimeout(() => { result.style.opacity = '1'; this.engine.shake = 8 }, 350))
+    }
+    tick()
+  }
+
+  // ── Dialogue and interaction panel ────────────────────────────────────────
+  private renderBottom(frame: Frame) {
+    const ui = this.ui
+    this.root.querySelector('.end')?.remove()
+    this.bottom.innerHTML = ''
+    if (frame.kind === 'end') {
+      const end = document.createElement('div')
+      end.className = 'end'
+      end.innerHTML = `<h2>${ui.end}</h2><button type="button">${ui.replay}</button>`
+      end.querySelector('button')!.onclick = () => { if (this.session) { this.session = new LessonSession(this.session.lesson); this.engine.directed = false; this.render() } }
+      this.root.appendChild(end)
+      this.dispatchEvent(new CustomEvent('lml-end', { detail: { state: this.session?.state, evidence: this.session?.evidence } }))
+      return
+    }
+    const screen = frame.stage.screen || 'call'
+    if (frame.kind === 'interaction' && !this.inScene(frame, screen)) this.bottom.appendChild(this.panelFor(frame))
+
+    let line: LineStep | null = null
+    let translation = ''
+    let tag = ''
+    let system = false
+    if (frame.kind === 'line') {
+      line = frame.step
+      translation = line.translation || ''
+    } else if (frame.feedback?.line || frame.feedback?.hint) {
+      line = frame.feedback.line || { kind: 'line', line: 0, speaker: null, text: '…', words: [] }
+      translation = frame.feedback.hint || line.translation || ''
+    } else {
+      line = { kind: 'line', line: frame.step.line, speaker: null, text: frame.step.props.prompt || '', words: frame.step.words }
+      tag = frame.step.props.title || ui.move
+    }
+    if (line.speaker && this.world) {
+      const character = this.world.characters[this.keyOf(line.speaker)!]
+      tag = character?.name.toUpperCase() || ''
+      system = !character?.rig
+    }
+    const box = document.createElement('div')
+    box.className = `box${system ? ' system' : ''}${frame.kind === 'interaction' && translation ? ' open' : ''}`
+    box.innerHTML = `<span class="tag"></span><p class="text"></p><p class="translation"></p><div class="foot"></div>`
+    box.querySelector('.tag')!.textContent = tag
+    box.querySelector('.translation')!.textContent = translation
+    box.querySelector('.foot')!.textContent = translation && frame.kind === 'line' ? ui.tapForTranslation : ''
+    box.onclick = (event) => {
+      const word = (event.target as HTMLElement).closest('b')
+      if (word) { this.dispatchEvent(new CustomEvent('lml-word', { detail: { word: word.getAttribute('data-word') } })); return }
+      if (this.typing) this.typing.done()
+      else if (translation) box.classList.toggle('open')
+    }
+    this.bottom.appendChild(box)
+    const hint = document.createElement('button')
+    hint.className = 'hint'
+    hint.type = 'button'
+    const blocked = this.session?.blocked
+    hint.textContent = blocked ? (this.inScene(frame, screen) ? ui.solveHere : ui.blocked) : ui.next
+    hint.onclick = () => this.go(1)
+    this.bottom.appendChild(hint)
+    this.typeLine(box.querySelector('.text')!, line, line.speaker ? this.keyOf(line.speaker) : null)
+  }
+
+  private panelFor(frame: Extract<Frame, { kind: 'interaction' }>) {
+    const session = this.session!
+    const panel = document.createElement('div')
+    panel.className = 'panel'
+    const after = (_correct: boolean) => { this.emitAnswer(); this.render() }
+    const step: InteractionStep = frame.step
+    if (step.component === 'lessonml:cloze') {
+      panel.innerHTML = `<div class="line"></div><div class="row"><input autocomplete="off" autocapitalize="off" spellcheck="false"><button class="act" type="button">${this.ui.check}</button></div>`
+      panel.querySelector('.line')!.textContent = (step.props.line || '').replace('___', frame.solved ? step.props.answer : '_____')
+      const input = panel.querySelector('input')!
+      const submit = () => { if (!frame.solved && input.value.trim()) after(session.type(input.value).correct) }
+      panel.querySelector('.act')!.addEventListener('click', submit)
+      input.addEventListener('keydown', (event) => { event.stopPropagation(); if (event.key === 'Enter') submit() })
+      if (frame.solved) input.disabled = true
+      return panel
+    }
+    if (step.component === 'lessonml:speak') {
+      const Recognition = (window as unknown as { SpeechRecognition?: new () => SpeechLike; webkitSpeechRecognition?: new () => SpeechLike }).SpeechRecognition
+        || (window as unknown as { webkitSpeechRecognition?: new () => SpeechLike }).webkitSpeechRecognition
+      const target = (step.props.target || '').toLowerCase()
+      panel.innerHTML = `<div class="row"><button class="act" type="button">🎤 ${this.ui.say}</button></div><div class="row"><input placeholder="${this.ui.typeInstead}"><button class="act" type="button">${this.ui.check}</button></div>`
+      const [sayButton, checkButton] = Array.from(panel.querySelectorAll<HTMLButtonElement>('.act'))
+      const input = panel.querySelector('input')!
+      if (!Recognition) sayButton.parentElement!.remove()
+      sayButton.onclick = () => {
+        if (!Recognition || frame.solved) return
+        const recognition = new Recognition()
+        recognition.lang = this.session?.lesson.language || 'en'
+        sayButton.textContent = this.ui.listening
+        recognition.onresult = (event) => after(session.spoke(event.results[0][0].transcript.toLowerCase().includes(target)).correct)
+        recognition.onend = () => { sayButton.textContent = `🎤 ${this.ui.say}` }
+        recognition.start()
+      }
+      const submit = () => { if (!frame.solved && input.value.trim()) after(session.spoke(input.value.toLowerCase().includes(target)).correct) }
+      checkButton.onclick = submit
+      input.addEventListener('keydown', (event) => { event.stopPropagation(); if (event.key === 'Enter') submit() })
+      return panel
+    }
+    step.options.forEach((option, index) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = `option${frame.misses.includes(index) ? ' wrong' : ''}${frame.solved && option.correct ? ' right' : ''}`
+      button.textContent = option.text
+      button.onclick = () => { if (!frame.solved) after(session.choose(index).correct) }
+      panel.appendChild(button)
+    })
+    return panel
+  }
+
+  private emitAnswer() {
+    const session = this.session
+    if (!session) return
+    const latest = session.evidence.filter((event) => event.at === session.frame.index)
+    latest.forEach((event) => this.dispatchEvent(new CustomEvent('lml-evidence', { detail: event })))
+    this.dispatchEvent(new CustomEvent('lml-state', { detail: { ...session.state } }))
+  }
+
+  private typeLine(target: HTMLElement, line: LineStep, speakerKey: string | null) {
+    clearInterval(this.typingTimer)
+    target.innerHTML = ''
+    const chars: HTMLSpanElement[] = []
+    const words = new Set(line.words)
+    // Wrap target words; everything is pre-laid so the layout never jumps.
+    const parts = line.text.split(/(\b[\w'-]+\b)/)
+    for (const part of parts) {
+      const lemma = part.toLowerCase()
+      const isWord = words.has(lemma) || [...words].some((word) => lemma.startsWith(word.replace(/e$/, '')) && lemma.length - word.length <= 3 && word.length > 3)
+      const host: HTMLElement = isWord ? Object.assign(document.createElement('b'), { textContent: '' }) : target
+      if (isWord) { host.setAttribute('data-word', [...words].find((word) => lemma.startsWith(word.replace(/e$/, ''))) || lemma); target.appendChild(host) }
+      for (const char of part) {
+        const span = document.createElement('span')
+        span.textContent = char
+        span.className = 'h'
+        host.appendChild(span)
+        chars.push(span)
+      }
+    }
+    let index = 0
+    this.talking = speakerKey
+    const done = () => {
+      chars.forEach((char) => char.classList.remove('h'))
+      clearInterval(this.typingTimer)
+      this.typing = null
+      if (this.talking) {
+        const key = this.talking
+        this.talking = null
+        this.characters(key).forEach((root) => setExpression(root, this.engine.expressions[key] || 'neutral'))
+      }
+    }
+    this.typing = { done }
+    this.typingTimer = window.setInterval(() => {
+      for (let n = 0; n < 2 && index < chars.length; n++) chars[index++].classList.remove('h')
+      if (index >= chars.length) done()
+    }, 26)
+  }
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+  private go(direction: 1 | -1) {
+    const session = this.session
+    if (!session) return
+    if (direction > 0) {
+      if (this.typing) { this.typing.done(); return }
+      if (!session.next()) {
+        const hint = this.root.querySelector<HTMLElement>('.hint')
+        hint?.animate([{ transform: 'translateX(-6px)' }, { transform: 'translateX(6px)' }, { transform: 'none' }], { duration: 300 })
+        return
+      }
+    } else if (!session.back()) return
+    this.render()
+  }
+
+  private bindInput() {
+    let start: { x: number; y: number } | null = null
+    const fromEditable = (event: Event) => (event.composedPath()[0] as HTMLElement | undefined)?.closest?.('input, textarea')
+    const down = (x: number, y: number) => { start = { x, y } }
+    const up = (x: number, y: number) => {
+      if (!start) return
+      const dx = x - start.x, dy = y - start.y
+      start = null
+      if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx)) this.go(dy < 0 ? 1 : -1)
+    }
+    this.addEventListener('touchstart', (event) => { if (!fromEditable(event)) down(event.touches[0].clientX, event.touches[0].clientY) }, { passive: true })
+    this.addEventListener('touchend', (event) => up(event.changedTouches[0].clientX, event.changedTouches[0].clientY))
+    this.addEventListener('mousedown', (event) => { if (!fromEditable(event)) down(event.clientX, event.clientY) })
+    this.addEventListener('mouseup', (event) => up(event.clientX, event.clientY))
+    let accumulated = 0, lastNavigation = -1e9
+    this.addEventListener('wheel', (event) => {
+      const now = performance.now()
+      if (now - lastNavigation < 700) { accumulated = 0; return }
+      accumulated = Math.sign(event.deltaY) === Math.sign(accumulated) ? accumulated + event.deltaY : event.deltaY
+      if (Math.abs(accumulated) >= 60) { this.go(accumulated > 0 ? 1 : -1); accumulated = 0; lastNavigation = now }
+    }, { passive: true })
+    this.tabIndex = 0
+    this.addEventListener('keydown', (event) => {
+      if (fromEditable(event)) return
+      if (['ArrowDown', 'PageDown', ' ', 'Enter'].includes(event.key)) { event.preventDefault(); this.go(1) }
+      if (['ArrowUp', 'PageUp'].includes(event.key)) { event.preventDefault(); this.go(-1) }
+    })
+    this.addEventListener('pointermove', (event) => {
+      const box = this.getBoundingClientRect()
+      this.engine.pointer.x = ((event.clientX - box.left) / box.width - 0.5) * 2
+      this.engine.pointer.y = ((event.clientY - box.top) / box.height - 0.5) * 2
+    })
+    this.svg.addEventListener('click', (event) => {
+      const option = (event.target as Element).closest('.opt') as SVGElement | null
+      const session = this.session
+      if (!option || !session || session.frame.kind !== 'interaction' || session.frame.solved) return
+      session.choose(Number(option.dataset.i))
+      this.emitAnswer()
+      this.engine.shake = session.frame.kind === 'interaction' && !session.frame.solved ? 5 : 0
+      this.render()
+    })
+  }
+
+  // ── Loops: blink, lip flaps, breathing, camera, rain ─────────────────────
+  private startLoops() {
+    const blink = () => {
+      if (!this.alive) return
+      const roots = Array.from(this.svg.querySelectorAll('[data-character]'))
+      roots.forEach((root) => setEyes(root, false))
+      this.timers.push(window.setTimeout(() => roots.forEach((root) => setEyes(root, true)), 110))
+      this.timers.push(window.setTimeout(blink, 2200 + Math.random() * 3000))
+    }
+    this.timers.push(window.setTimeout(blink, 1200))
+    let open = false
+    const flap = () => {
+      if (!this.alive) return
+      if (this.talking) {
+        open = !open
+        const key = this.talking
+        this.characters(key).forEach((root) => setMouth(root, open ? 'talk' : (this.engine.expressions[key] || 'neutral')))
+      }
+      this.timers.push(window.setTimeout(flap, 70 + Math.random() * 70))
+    }
+    flap()
+    const drops = new Map<Element, { x: number; y: number; v: number; l: number }>()
+    let last = performance.now()
+    const frame = (now: number) => {
+      if (!this.alive) return
+      const e = this.engine
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      const t = now / 1000
+      const c = e.camera
+      const a = 1 - Math.exp(-dt * c.k)
+      c.s += (c.ts - c.s) * a; c.x += (c.tx - c.x) * a; c.y += (c.ty - c.y) * a
+      e.pointer.sx += (e.pointer.x - e.pointer.sx) * 0.06
+      e.pointer.sy += (e.pointer.y - e.pointer.sy) * 0.06
+      e.shake *= Math.pow(0.02, dt)
+      const hx = Math.sin(t * 0.37) * 3 + Math.sin(t * 0.91) * 1.2 + (Math.random() - 0.5) * e.shake
+      const hy = Math.cos(t * 0.29) * 2.4 + (Math.random() - 0.5) * e.shake
+      this.q('#hs-cam')?.setAttribute('transform', `translate(${(c.x + hx).toFixed(2)},${(c.y + hy).toFixed(2)}) scale(${c.s.toFixed(4)})`)
+      this.svg.querySelectorAll<SVGElement>('.px').forEach((layer) => {
+        const f = Number(layer.dataset.f)
+        layer.setAttribute('transform', `translate(${(-e.pointer.sx * 26 * (f - 0.85)).toFixed(2)},${(-e.pointer.sy * 14 * (f - 0.85)).toFixed(2)})`)
+      })
+      this.svg.querySelectorAll<SVGElement>('[data-character]').forEach((root, i) => {
+        const key = root.dataset.character!
+        const breath = Math.sin(t * 1.7 + i * 1.3)
+        const expression = e.expressions[key] || 'neutral'
+        const head = `translate(0,${(breath * 1.3 + (expression === 'surprised' ? -4 : 0)).toFixed(2)}) rotate(${((TILT[expression] || 0) + Math.sin(t * 0.6 + i) * 0.8).toFixed(2)} 200 300)`
+        root.querySelector('.bd')?.setAttribute('transform', `translate(0,${(breath * 1.8).toFixed(2)})`)
+        root.querySelector('.nk')?.setAttribute('transform', `translate(0,${(breath * 1.5).toFixed(2)})`)
+        root.querySelector('.hb')?.setAttribute('transform', head)
+        root.querySelector('.hf')?.setAttribute('transform', head)
+        root.querySelectorAll<SVGElement>('.lock').forEach((lock, n) => lock.setAttribute('transform', `rotate(${(Math.sin(t * 1.3 + n + i) * 1.4).toFixed(2)} ${lock.dataset.pivot})`))
+      })
+      this.svg.querySelectorAll('.drop').forEach((drop) => {
+        let p = drops.get(drop)
+        if (!p) { p = { x: 120 + Math.random() * 960, y: 120 + Math.random() * 700, v: 900 + Math.random() * 500, l: 18 + Math.random() * 26 }; drops.set(drop, p) }
+        p.y += p.v * dt; p.x -= p.v * dt * 0.12
+        if (p.y > 830) { p.y = 110 - Math.random() * 60; p.x = 140 + Math.random() * 1000 }
+        drop.setAttribute('x1', p.x.toFixed(1)); drop.setAttribute('y1', p.y.toFixed(1))
+        drop.setAttribute('x2', (p.x + p.l * 0.12).toFixed(1)); drop.setAttribute('y2', (p.y - p.l).toFixed(1))
+      })
+      this.frameId = requestAnimationFrame(frame)
+    }
+    this.frameId = requestAnimationFrame(frame)
+  }
+}
+
+interface SpeechLike {
+  lang: string
+  start(): void
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+  onend: (() => void) | null
+}
+
+if (typeof customElements !== 'undefined' && !customElements.get('lml-scene')) customElements.define('lml-scene', LmlSceneElement)

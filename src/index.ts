@@ -5,3 +5,4 @@ export { CORE_COMPONENTS, EVIDENCE_FACETS, describeWorld, type World, type Chara
 export { renderCharacter, generateCharacter, EXPRESSIONS, type CharacterSpec, type Expression } from './rig/rig.js'
 export { STYLE_PACKS, type StylePack } from './rig/styles.js'
 export { setExpression, setEyes, setMouth } from './rig/controls.js'
+export { LessonSession, type Frame, type StageState, type EvidenceEvent } from './player/session.js'

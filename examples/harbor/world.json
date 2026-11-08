@@ -5,25 +5,76 @@
     "priya": {
       "name": "Priya",
       "description": "Compliance officer in New York. Precise to the comma, skeptical but fair; warms up only to people who show their evidence.",
-      "expressions": ["neutral", "smile", "stern", "surprised", "worried"],
-      "rig": { "id": "priya", "hair": "long", "outfit": "blazer", "glasses": true, "colors": { "skin": "#ecc4a6", "hair": "#231a2c", "eyes": "#7a4a2a", "cloth": "#3a3f5c" } }
+      "expressions": [
+        "neutral",
+        "smile",
+        "stern",
+        "surprised",
+        "worried"
+      ],
+      "rig": {
+        "id": "priya",
+        "hair": "long",
+        "outfit": "blazer",
+        "glasses": true,
+        "colors": {
+          "skin": "#ecc4a6",
+          "hair": "#231a2c",
+          "eyes": "#7a4a2a",
+          "cloth": "#3a3f5c"
+        }
+      }
     },
     "dana": {
       "name": "Dana",
       "description": "Engineering lead. Blunt, fast, protective of the team; respects people who push back with reasons.",
-      "expressions": ["neutral", "smile", "stern", "surprised", "worried"],
-      "rig": { "id": "dana", "hair": "bob", "outfit": "hoodie", "colors": { "skin": "#f3d4c0", "hair": "#7a3424", "eyes": "#4f8a72", "cloth": "#33456a" } }
+      "expressions": [
+        "neutral",
+        "smile",
+        "stern",
+        "surprised",
+        "worried"
+      ],
+      "rig": {
+        "id": "dana",
+        "hair": "bob",
+        "outfit": "hoodie",
+        "colors": {
+          "skin": "#f3d4c0",
+          "hair": "#7a3424",
+          "eyes": "#4f8a72",
+          "cloth": "#33456a"
+        }
+      }
     },
     "marcus": {
       "name": "Marcus",
       "description": "A night-shift nurse in Ohio and an early Ledger user. Kind, tired, trusts the app more than he should.",
-      "expressions": ["neutral", "smile", "stern", "surprised", "worried"],
-      "rig": { "id": "marcus", "hair": "short", "outfit": "scrubs", "colors": { "skin": "#8d5a3e", "hair": "#151318", "eyes": "#5a4a3a", "cloth": "#2f6f73" } }
+      "expressions": [
+        "neutral",
+        "smile",
+        "stern",
+        "surprised",
+        "worried"
+      ],
+      "rig": {
+        "id": "marcus",
+        "hair": "short",
+        "outfit": "scrubs",
+        "colors": {
+          "skin": "#8d5a3e",
+          "hair": "#151318",
+          "eyes": "#5a4a3a",
+          "cloth": "#2f6f73"
+        }
+      }
     },
     "ledger": {
       "name": "Ledger",
       "description": "The AI research assistant the learner built. Speaks in the system voice; has no face, only a waveform.",
-      "expressions": ["neutral"]
+      "expressions": [
+        "neutral"
+      ]
     }
   },
   "places": {
@@ -31,9 +82,40 @@
       "name": "Your desk in Hangzhou, 23:10",
       "description": "Rain on the window, a video call with New York on the monitor. The monitor can show the call, a shared page, Ledger's logs or a search.",
       "stage": {
-        "camera": ["wide", "push", "screen", "priya", "dana", "share", "mail", "logs", "search"],
-        "screen": ["call", "share", "logs", "search"],
-        "effect": ["shake", "scan", "mail", "phone", "typing", "pip", "rule"]
+        "camera": [
+          "wide",
+          "push",
+          "screen",
+          "priya",
+          "dana",
+          "share",
+          "mail",
+          "logs",
+          "search"
+        ],
+        "screen": [
+          "call",
+          "share",
+          "logs",
+          "search"
+        ],
+        "effect": [
+          "shake",
+          "scan",
+          "mail",
+          "phone",
+          "typing",
+          "pip",
+          "rule"
+        ],
+        "search": [
+          "*"
+        ]
+      },
+      "set": "harbor-office",
+      "cast": {
+        "call": "priya",
+        "tile": "dana"
       }
     }
   }

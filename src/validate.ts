@@ -47,6 +47,7 @@ export function compile(source: string, world: World): CompileResult {
           report(step.line, 'unknown-stage-verb', `@${ns}:${placeKey} has no stage verb "${step.verb}". Available: ${Object.keys(place.stage).join(', ')}.`, closest(step.verb, Object.keys(place.stage)))
           continue
         }
+        if (allowed.includes('*')) continue
         for (const arg of step.args) {
           if (!allowed.includes(arg)) report(step.line, 'unknown-stage-arg', `"! ${step.verb} ${arg}": ${arg} is not available here. Use one of: ${allowed.join(', ')}.`, closest(arg, allowed))
         }

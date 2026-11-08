@@ -44,6 +44,13 @@ DANA (stern): "Someone has to be {accountable} for what this thing says."
   on correct: evidence read verify; set trust.priya += 1
   on wrong: PRIYA (stern): "Look again."
 
+! screen search
+! search "Northfield Research" report
+! camera search
+! effect pip
+> You search for the report. It does not exist. Ledger made up a source.
+  zh: 你去搜那份报告，它根本不存在。Ledger 编了一个出处。
+
 if trust.priya > 0:
   ! camera priya
   PRIYA (smile): "Good. You check before you speak. So should Ledger."

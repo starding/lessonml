@@ -19,6 +19,10 @@ export interface PlaceEntry {
   // Stage verbs this place understands and the arguments each accepts,
   // e.g. { camera: ["wide", "priya"], effect: ["shake"] }.
   stage: Record<string, string[]>
+  // The drawing that plays this place (a set id known to the player) and who
+  // sits in each of the set's character slots.
+  set?: string
+  cast?: Record<string, string>
 }
 
 export interface World {
@@ -106,7 +110,7 @@ export const describeWorld = (world: World) => {
   lines.push('', '## Places (start a scene with "# scene <id> @<place-id>")')
   for (const [key, place] of Object.entries(world.places)) {
     lines.push(`- @${world.namespace}:${key}: ${place.description}`)
-    for (const [verb, args] of Object.entries(place.stage)) lines.push(`  ! ${verb} ${args.join(' | ')}`)
+    for (const [verb, args] of Object.entries(place.stage)) lines.push(`  ! ${verb} ${args.includes('*') ? '<free text>' : args.join(' | ')}`)
   }
   lines.push('', '## Components (start with "? <component> <id>")')
   for (const [id, component] of Object.entries(CORE_COMPONENTS)) {

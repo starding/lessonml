@@ -169,12 +169,44 @@ Runtimes rely on this part contract:
 
 `generateCharacter(seed)` makes a new character that is consistent under every pack.
 
-## 8. Roadmap
+## 8. Player (v0.2)
+
+`LessonSession` (`src/player/session.ts`) is the reference interpreter: a pure state machine over the IR, shared by every runtime. It owns order, state, branches, blocking, back navigation and evidence.
+
+Stage semantics:
+- `camera` and `screen` persist until they are changed.
+- `effect <name>` applies to the next line or interaction only.
+- Any other verb keeps its latest arguments. For example, `search <free text>` is allowed when the place declares `"*"` for that verb.
+- `NAME (expression):` sets that character's expression until it is changed.
+- An interaction blocks forward motion until it is solved. A wrong answer shows the option's hint and any line its `on wrong` handler says.
+
+`<lml-scene>` (`src/player/element.ts`) is the web runtime:
+
+```html
+<script type="module" src="lessonml/dist/src/player/element.js"></script>
+<lml-scene src="lesson.lml" world="world.json" style-pack="anime-clean"></lml-scene>
+```
+
+The element draws the place's set, fills the set's character slots (`place.cast`), and runs the camera, parallax, breathing, blinking and lip flaps. Navigation follows one grammar:
+- swipe up, wheel, ↓ or Space moves on;
+- ↑ goes back;
+- tapping a line finishes it or shows the translation.
+
+A set may host an interaction inside the scene. The harbor office, for example, draws `pick-evidence` options on its monitor's `logs` screen. Every other interaction uses the generic panel: option buttons, a cloze input, or speech recognition with a typed fallback.
+
+The element emits these events:
+- `lml-evidence`
+- `lml-state`
+- `lml-word`
+- `lml-end`
+- `lml-error` (the compiler diagnostics)
+
+## 9. Roadmap
 
 | Version | Scope |
 |---|---|
 | v0.1 | Syntax, IR, compiler and diagnostics, core components, character rig, three style packs |
-| v0.2 | Scene player as a web component (`<lml-scene>`); place sets; camera and parallax |
+| v0.2 | ✅ Interpreter (`LessonSession`) and `<lml-scene>` web component; place sets with character slots; camera and parallax |
 | v0.3 | MCP server with `describe_world`, `compile` and `render_preview` (a screenshot), so a model can write, check and see its work |
 | v0.4 | Improvisation slots: lines a runtime model may improvise within a character card, state and lesson goal |
 | v0.5 | Pack registry; the first non-language components (simulation sliders, charts) |

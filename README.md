@@ -30,18 +30,28 @@ if trust.priya > 0:
 
 ## Status
 
-v0.1 is an early draft. It already includes:
+This is an early draft. It already includes:
 
 - the screenplay syntax;
 - the IR;
 - a compiler with model-facing diagnostics;
 - four core interaction components;
 - a parametric character rig;
-- three style packs: anime clean line, contemporary flat and ligne claire.
+- three style packs: anime clean line, contemporary flat and ligne claire;
+- a reference interpreter and the `<lml-scene>` web component (v0.2).
 
 The full design is in [SPEC.md](SPEC.md).
 
 The project started inside HeatWords, an English-learning app for professionals. Language learning comes first, but the components are meant for every subject.
+
+## Play a lesson in any page
+
+```html
+<script type="module" src="lessonml/dist/src/player/element.js"></script>
+<lml-scene src="lesson.lml" world="world.json" style-pack="anime-clean"></lml-scene>
+```
+
+The element listens to swipes, the wheel and the keyboard. It reports learning evidence and story state as DOM events (`lml-evidence`, `lml-state`), so the host app owns the learner's record.
 
 ## Try it
 
@@ -49,7 +59,7 @@ The project started inside HeatWords, an English-learning app for professionals.
 npm install
 npm test                                                   # compiler and rig tests
 npm run check -- examples/harbor/compliance-call.lml       # compile an example lesson
-npm run serve                                              # style-pack playground at http://localhost:4173
+npm run serve                                              # playground at http://localhost:4173 (style packs, and the player at /playground/player.html)
 ```
 
 ## Contributing
