@@ -48,7 +48,7 @@ test('glossary: bare terms belong to the lesson language; lesson senses override
 })
 
 test('the default reviewer checks required words and length, with feedback', async () => {
-  const input = { prompt: '', targets: ['numerator', 'denominator'], minWords: 8, language: 'en' }
+  const input = { id: 'why-equal', prompt: '', targets: ['numerator', 'denominator'], minWords: 8, language: 'en' }
   assert.deepEqual(await defaultReviewer({ ...input, text: 'Both are half.' }), { pass: false, feedback: 'Use: numerator, denominator' })
   assert.equal((await defaultReviewer({ ...input, text: 'The numerator and denominator doubled.' })).pass, false)
   assert.equal((await defaultReviewer({ ...input, text: 'Multiplying the numerator and the denominator by two keeps the same amount.' })).pass, true)

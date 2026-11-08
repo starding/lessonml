@@ -130,7 +130,7 @@ function screenViews(rnd: () => number, ctx: HarborContext) {
       <text x="58" y="168">call it “a clean beat.” Shares may</text>
       <text x="58" y="194">jump tomorrow.</text>
     </g>
-    <g id="discBox">
+    <g id="discBox" class="fade" style="opacity:0">
       <rect x="40" y="240" width="436" height="78" rx="14" fill="rgba(229,72,77,.06)" stroke="#e5484d" stroke-width="2" stroke-dasharray="8 6" class="alarm"/>
       <text x="58" y="270" font-size="16" font-weight="800" fill="#c8323a" font-family="-apple-system,Arial">⚠ Risk disclosure — not shown</text>
       <text x="58" y="296" font-size="13.5" fill="#8a5a5e" font-family="-apple-system,Arial">Setting was never turned on</text>
@@ -347,6 +347,8 @@ export const HARBOR_OFFICE_SET: SetDefinition = {
     }
     const show = (selector: string, on: boolean, value = '1') => { const node = rt.q(selector); if (node) node.style.opacity = on ? value : '0' }
     show('#hs-pip', screen !== 'call')
+    // The missing disclosure is a discovery: shown only once a lesson says "! share disclosure".
+    show('#hs-discBox', frame.stage.args.share === 'disclosure')
     show('#hs-typing', effects.has('typing'))
     show('#hs-phoneScreen', effects.has('phone') || effects.has('mail'), '0.55')
     show('#hs-rule', effects.has('scan') || effects.has('rule'))

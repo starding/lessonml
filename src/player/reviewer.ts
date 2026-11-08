@@ -1,7 +1,8 @@
 // Judging lessonml:write answers. Hosts plug in their own (an LLM, a teacher
 // queue); the default needs no server: required words present, long enough.
 
-export type Reviewer = (input: { text: string; prompt: string; targets: string[]; minWords: number; language: string }) => Promise<{ pass: boolean; feedback?: string }>
+// `id` is the interaction id, so a host can look up its own rubric for the task.
+export type Reviewer = (input: { id: string; text: string; prompt: string; targets: string[]; minWords: number; language: string }) => Promise<{ pass: boolean; feedback?: string }>
 
 export const defaultReviewer: Reviewer = async ({ text, targets, minWords }) => {
   const words = text.toLowerCase().match(/[a-z']+/g) || []

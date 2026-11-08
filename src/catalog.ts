@@ -11,6 +11,8 @@ export interface CharacterEntry {
   description: string
   expressions: string[]
   rig?: CharacterSpec
+  // A machine voice (an AI, a PA system): styled as the system, not a person.
+  system?: boolean
 }
 
 export interface PlaceEntry {

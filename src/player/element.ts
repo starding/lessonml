@@ -352,7 +352,9 @@ export class LmlSceneElement extends HTMLElement {
       translation = line.translation || ''
     } else if (frame.feedback?.line || frame.feedback?.hint || frame.feedback?.direction) {
       const direction = frame.feedback.direction ? ui[frame.feedback.direction] : ''
-      line = frame.feedback.line || { kind: 'line', line: 0, speaker: null, text: direction || '…', words: [] }
+      // Keep the task in view when the feedback is only a hint (e.g. a review note).
+      const prompt = frame.step.props.prompt
+      line = frame.feedback.line || { kind: 'line', line: 0, speaker: null, text: direction || prompt || '…', words: direction || !prompt ? [] : frame.step.words }
       translation = frame.feedback.hint || (frame.feedback.line ? direction : '') || line.translation || ''
     } else {
       const fallback = frame.step.component === 'lessonml:cloze' ? ui.fill : ''
@@ -364,7 +366,7 @@ export class LmlSceneElement extends HTMLElement {
     if (line.speaker && this.world) {
       const character = this.world.characters[this.keyOf(line.speaker)!]
       tag = character?.name.toUpperCase() || ''
-      system = !character?.rig
+      system = Boolean(character?.system)
     }
     const box = document.createElement('div')
     box.className = `box${system ? ' system' : ''}${frame.kind === 'interaction' && translation ? ' open' : ''}`
@@ -478,7 +480,7 @@ export class LmlSceneElement extends HTMLElement {
         submitButton.disabled = true
         submitButton.textContent = this.ui.reviewing
         const targets = (step.props.targets || '').split(',').map((target) => target.trim()).filter(Boolean)
-        const verdict = await this.reviewer({ text, prompt: step.props.prompt || '', targets, minWords: Number(step.props.min_words || 0), language: session.lesson.language })
+        const verdict = await this.reviewer({ id: step.id, text, prompt: step.props.prompt || '', targets, minWords: Number(step.props.min_words || 0), language: session.lesson.language })
           .catch(() => ({ pass: false, feedback: 'Review failed; try again.' }))
         after(session.reviewed(verdict.pass, verdict.feedback).correct)
       }

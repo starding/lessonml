@@ -74,13 +74,21 @@
       "description": "The AI research assistant the learner built. Speaks in the system voice; has no face, only a waveform.",
       "expressions": [
         "neutral"
+      ],
+      "system": true
+    },
+    "ceo": {
+      "name": "CEO",
+      "description": "The brokerage CEO in New York. Busy, skeptical, decides fast; joins calls by voice only, camera off.",
+      "expressions": [
+        "neutral"
       ]
     }
   },
   "places": {
     "office-night": {
       "name": "Your desk in Hangzhou, 23:10",
-      "description": "Rain on the window, a video call with New York on the monitor. The monitor can show the call, a shared page, Ledger's logs or a search.",
+      "description": "Rain on the window, a video call with New York on the monitor. The monitor can show the call, a shared page, Ledger's logs or a search. '! share disclosure' reveals the missing risk disclosure on the shared page (hidden by default).",
       "stage": {
         "camera": [
           "wide",
@@ -110,6 +118,10 @@
         ],
         "search": [
           "*"
+        ],
+        "share": [
+          "answer",
+          "disclosure"
         ]
       },
       "set": "harbor-office",
