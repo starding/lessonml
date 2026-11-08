@@ -6,3 +6,6 @@ export { renderCharacter, generateCharacter, EXPRESSIONS, type CharacterSpec, ty
 export { STYLE_PACKS, type StylePack } from './rig/styles.js'
 export { setExpression, setEyes, setMouth } from './rig/controls.js'
 export { LessonSession, type Frame, type StageState, type EvidenceEvent } from './player/session.js'
+export { registerSet, getSet, registeredSets, HARBOR_OFFICE_SET, CLASSROOM_SET, type SetDefinition, type SetContext, type SetRuntime, type Rect } from './sets/index.js'
+export { FACET_PACKS, toTargetId, type GlossEntry } from './catalog.js'
+export { defaultReviewer, type Reviewer } from './player/reviewer.js'

@@ -12,6 +12,8 @@ export interface Lesson {
   language: string
   learnerLanguage?: string
   state: Record<string, number>
+  // Lesson-level senses; they override the world's glossary. Keys are target ids.
+  glossary: Record<string, { gloss: string; definition?: string }>
   scenes: Scene[]
 }
 
@@ -53,9 +55,9 @@ export interface InteractionOption {
 export interface Action {
   kind: 'evidence' | 'set' | 'say'
   line: number
-  // evidence: facet + word; set: variable + op + value; say: a line step
+  // evidence: facet + target id; set: variable + op + value; say: a line step
   facet?: string
-  word?: string
+  target?: string
   variable?: string
   op?: '=' | '+=' | '-='
   value?: number

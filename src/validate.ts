@@ -4,7 +4,7 @@
 // where, what, and what would be valid, so the model that wrote the text can
 // repair it without a human.
 
-import { CORE_COMPONENTS, EVIDENCE_FACETS, closest, type World } from './catalog.js'
+import { CORE_COMPONENTS, EVIDENCE_FACETS, TARGET_ID, closest, toTargetId, type World } from './catalog.js'
 import type { Diagnostic, Lesson, LineStep, Step } from './ir.js'
 import { parseScreenplay } from './screenplay.js'
 
@@ -17,6 +17,8 @@ export interface CompileResult {
 export function compile(source: string, world: World): CompileResult {
   const { lesson, diagnostics } = parseScreenplay(source)
   const ns = world.namespace
+  // Bare terms belong to the lesson's language: "pitch" → "en:pitch".
+  lesson.glossary = Object.fromEntries(Object.entries(lesson.glossary).map(([key, entry]) => [toTargetId(key, lesson.language), entry]))
   const characterByName = new Map(Object.entries(world.characters).map(([key, character]) => [character.name.toLowerCase(), key]))
   const declared = new Set(Object.keys(lesson.state))
   const interactionIds = new Set<string>()
@@ -82,6 +84,8 @@ export function compile(source: string, world: World): CompileResult {
           if (!component.events.includes(event)) report(step.line, 'unknown-event', `${step.component} emits no "${event}". Events: ${component.events.join(', ')}.`, closest(event, component.events))
           for (const action of actions) {
             if (action.kind === 'evidence') {
+              action.target = toTargetId(action.target || '', lesson.language)
+              if (!TARGET_ID.test(action.target)) report(action.line, 'bad-target', `evidence target "${action.target}" must be a word or a namespaced id like "math:fraction-equivalence".`)
               if (!EVIDENCE_FACETS.includes(action.facet as never)) report(action.line, 'unknown-facet', `evidence facet "${action.facet}" is not in the vocabulary: ${EVIDENCE_FACETS.join(', ')}.`, closest(action.facet || '', [...EVIDENCE_FACETS]))
               else if (!component.facets.includes(action.facet as never)) report(action.line, 'facet-not-produced', `${step.component} cannot produce "${action.facet}" evidence. It produces: ${component.facets.join(', ')}.`)
             } else if (action.kind === 'set') {

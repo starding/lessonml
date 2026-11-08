@@ -85,7 +85,7 @@ NAME (expression): "Spoken line with a {target} word or {surface|lemma}."
   - wrong option
     hint: why it is wrong (required, in the learner's language)
   * the one correct option
-  on correct: evidence <facet> <word>; set <state> += 1
+  on correct: evidence <facet> <target>; set <state> += 1   # target: a word (en:word) or a skill id (math:fraction-equivalence)
   on wrong: NAME (expression): "reaction"
 if <state> > 0:
   NAME (smile): "only if the learner earned it"
@@ -99,11 +99,13 @@ ${Object.entries(CORE_COMPONENTS).map(([id, c]) => `### ${id}\n${c.description}\
 - Characters stay in character: read their descriptions. Use expressions to show reactions; change the camera when attention moves.
 - Wrong options are plausible, and each hint teaches the distinction.
 - Let actions matter: change state on good answers and pay it off later with an if-branch.
-- Evidence facets must be ones the component can produce (see above).
+- Evidence facets must be ones the component can produce (see above). Use skill ids as targets for non-language subjects.
+- Give every {marked} word a gloss: in the world's glossary, or under "glossary:" in the front matter (term: 释义 | definition).
+- A character only appears when the set shows their slot: check the place description and switch the screen or camera back before they speak.
 - Style packs (the player's drawing rules, never named in a lesson): ${Object.keys(STYLE_PACKS).join(', ')}.`
 
 export function createServer() {
-  const server = new McpServer({ name: 'lessonml', version: '0.3.0' })
+  const server = new McpServer({ name: 'lessonml', version: '0.4.0' })
 
   server.registerTool('lessonml_guide', {
     title: 'LessonML authoring guide',
@@ -155,7 +157,7 @@ export function createServer() {
       const source = readSource(args)
       const result = compile(source, resolveWorld(source, args.world, args.path))
       if (!result.ok) return text(`does not compile; run lessonml_compile first:\n${formatDiagnostics(result.diagnostics)}`)
-      return text(simulate(result.lesson, args.answers || {}))
+      return text(simulate(result.lesson, args.answers || {}, resolveWorld(source, args.world, args.path)))
     } catch (error) { return failure(error) }
   })
 

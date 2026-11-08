@@ -39,7 +39,8 @@ This is an early draft. It already includes:
 - a parametric character rig;
 - three style packs: anime clean line, contemporary flat and ligne claire;
 - a reference interpreter and the `<lml-scene>` web component (v0.2);
-- an MCP server for the model authoring loop (v0.3).
+- an MCP server for the model authoring loop (v0.3);
+- subject-neutral evidence, a glossary, writing tasks with pluggable reviewers, pluggable place sets and an embedded mode, with a math lesson as the acceptance test (v0.4).
 
 The full design is in [SPEC.md](SPEC.md).
 
@@ -52,7 +53,7 @@ The project started inside HeatWords, an English-learning app for professionals.
 <lml-scene src="lesson.lml" world="world.json" style-pack="anime-clean"></lml-scene>
 ```
 
-The element listens to swipes, the wheel and the keyboard. It reports learning evidence and story state as DOM events (`lml-evidence`, `lml-state`), so the host app owns the learner's record.
+In standalone mode the element listens to swipes, the wheel and the keyboard. With `controls="host"`, your app drives it with `next()` and `back()` and draws its own navigation; see `playground/embed.html`. It reports learning evidence and story state as DOM events (`lml-evidence`, `lml-state`), so the host app owns the learner's record.
 
 ## Let a model write lessons (MCP)
 

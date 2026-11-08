@@ -3,25 +3,31 @@
 //   <script type="module" src="lessonml/dist/src/player/element.js"></script>
 //   <lml-scene src="lesson.lml" world="world.json" style-pack="anime-clean"></lml-scene>
 //
-// The element draws; LessonSession decides. Navigation follows one grammar:
-// swipe up / wheel / ↓ / Space moves on, ↑ goes back, tapping looks closer.
-// Events: lml-evidence (each evidence event), lml-state (state after an
-// answer), lml-word (a target word was tapped), lml-end, lml-error.
+// The element draws; LessonSession decides; the place's set (src/sets) supplies
+// the art. Two modes, like <video>:
+//   standalone (default)  its own navigation: swipe up / wheel / ↓ / Space
+//                         moves on, ↑ goes back, tapping a line looks closer
+//   controls="host"       the host app drives: call next() / back(), listen
+//                         to lml-frame, draw its own hints
+// Events: lml-frame (every frame), lml-evidence, lml-state, lml-word (with the
+// lesson's gloss), lml-end, lml-error. Set `reviewer` to judge write tasks.
 
 import { compile, formatDiagnostics } from '../validate.js'
-import type { World } from '../catalog.js'
+import { toTargetId, type GlossEntry, type World } from '../catalog.js'
 import type { InteractionStep, LineStep } from '../ir.js'
 import { STYLE_PACKS } from '../rig/styles.js'
 import { setExpression, setEyes, setMouth } from '../rig/controls.js'
 import { LessonSession, type Frame } from './session.js'
-import { buildHarborOfficeSvg, HARBOR_SHOTS, logOptionsMarkup, type HarborContext } from '../sets/harbor-office.js'
+import { getSet, registeredSets, type SetDefinition, type SetRuntime } from '../sets/index.js'
+
+import { defaultReviewer, type Reviewer } from './reviewer.js'
+export { defaultReviewer, type Reviewer }
 
 const UI = {
-  en: { next: 'Swipe up to continue ↑', blocked: 'Solve it to continue', solveHere: 'Tap the answer on the screen', end: 'End of lesson', replay: 'Play again', check: 'Check', say: 'Say it', listening: 'Listening…', typeInstead: 'Type what you would say', tapForTranslation: 'Tap for translation', move: 'Your move', fill: 'Type the missing word.' },
-  zh: { next: '上滑继续 ↑', blocked: '完成这一关后上滑继续', solveHere: '在屏幕上点出答案', end: '本课完', replay: '再看一遍', check: '确定', say: '开口说', listening: '正在听…', typeInstead: '也可以打出你要说的话', tapForTranslation: '轻触对白看中文', move: '轮到你了', fill: '把缺的那个词打进去。' }
+  en: { next: 'Swipe up to continue ↑', blocked: 'Solve it to continue', solveHere: 'Tap the answer on the screen', end: 'End of lesson', replay: 'Play again', check: 'Check', say: 'Say it', listening: 'Listening…', typeInstead: 'Type what you would say', tapForTranslation: 'Tap for translation', move: 'Your move', fill: 'Fill in the blank.', write: 'Write your answer…', submit: 'Submit', reviewing: 'Reviewing…' },
+  zh: { next: '上滑继续 ↑', blocked: '完成这一关后上滑继续', solveHere: '在屏幕上点出答案', end: '本课完', replay: '再看一遍', check: '确定', say: '开口说', listening: '正在听…', typeInstead: '也可以打出你要说的话', tapForTranslation: '轻触对白看中文', move: '轮到你了', fill: '把空缺处填上。', write: '写下你的回答……', submit: '提交', reviewing: '正在点评…' }
 }
 
-const GLOW: Record<string, string> = { call: '#ffd2a8', share: '#e6eeff', logs: '#5fe3ff', search: '#e6eeff' }
 const TILT: Record<string, number> = { neutral: 0, smile: 1.5, stern: -2, surprised: 0, worried: 2.5 }
 
 const CSS = `
@@ -56,6 +62,7 @@ svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
 .panel .row { display:flex; gap:8px; }
 .panel input { flex:1; border-radius:12px; border:1px solid rgba(255,255,255,.2); background:rgba(9,11,26,.9); color:#fff; font-size:16px; padding:10px 12px; }
 .panel .act { border-radius:12px; border:0; background:#eef1ff; color:#0b0d1a; font-weight:700; padding:10px 16px; cursor:pointer; }
+.panel textarea { border-radius:12px; border:1px solid rgba(255,255,255,.2); background:rgba(9,11,26,.92); color:#fff; font:15px/1.5 inherit; padding:10px 12px; min-height:84px; resize:none; }
 .panel .line { font-family:ui-monospace,Menlo,monospace; font-size:14px; background:rgba(9,17,32,.92); border:1px solid rgba(95,227,255,.3); border-radius:12px; padding:10px 12px; color:#c9f6ff; }
 .end { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:rgba(5,6,13,.6); }
 .end h2 { margin:0; font-size:34px; letter-spacing:.14em; }
@@ -69,6 +76,9 @@ type Ui = typeof UI.en
 export class LmlSceneElement extends HTMLElement {
   static observedAttributes = ['src', 'world', 'style-pack']
 
+  // Judges lessonml:write answers; replace with the host app's (an LLM, a teacher queue).
+  reviewer: Reviewer = defaultReviewer
+
   private root: ShadowRoot
   private svg!: SVGSVGElement
   private bottom!: HTMLDivElement
@@ -81,7 +91,9 @@ export class LmlSceneElement extends HTMLElement {
   private typingTimer = 0
   private typing: { done: () => void } | null = null
   private talking: string | null = null
-  private shownSearch = ''
+  private set: SetDefinition | null = null
+  private runtime!: SetRuntime
+  private get hostControls() { return this.getAttribute('controls') === 'host' }
   private engine = {
     size: { w: 1, h: 1 }, bottomInset: 220,
     camera: { s: 1, x: 0, y: 0, ts: 1, tx: 0, ty: 0, k: 0.6 },
@@ -97,9 +109,17 @@ export class LmlSceneElement extends HTMLElement {
 
   connectedCallback() {
     this.alive = true
-    this.root.innerHTML = `<style>${CSS}</style><svg class="hs-root" xmlns="http://www.w3.org/2000/svg"></svg><div class="vignette"></div><div class="scan"></div><div class="bottom"></div>`
+    this.root.innerHTML = `<style>${CSS}</style><svg class="hs-root lml-set" xmlns="http://www.w3.org/2000/svg"></svg><div class="vignette"></div><div class="scan"></div><div class="bottom"></div>`
     this.svg = this.root.querySelector('svg')!
     this.bottom = this.root.querySelector('.bottom')!
+    this.runtime = {
+      q: (selector) => this.svg.querySelector(selector) as SVGElement | null,
+      qa: (selector) => Array.from(this.svg.querySelectorAll(selector)) as SVGElement[],
+      later: (fn, ms) => { this.timers.push(window.setTimeout(() => { if (this.alive) fn() }, ms)) },
+      shake: (amount) => { this.engine.shake = Math.max(this.engine.shake, amount) },
+      scan: () => { const scan = this.root.querySelector<HTMLElement>('.scan')!; scan.classList.remove('run'); void scan.offsetWidth; scan.classList.add('run') },
+      memo: {}
+    }
     new ResizeObserver(() => this.resize()).observe(this)
     new ResizeObserver(() => { this.engine.bottomInset = this.bottom.offsetHeight + 24; this.fit(false) }).observe(this.bottom)
     this.bindInput()
@@ -152,6 +172,7 @@ export class LmlSceneElement extends HTMLElement {
       if (frame.kind === 'interaction' && !frame.solved) {
         if (frame.step.component === 'lessonml:cloze') session.type(frame.step.props.answer || '')
         else if (frame.step.component === 'lessonml:speak') session.spoke(true)
+        else if (frame.step.component === 'lessonml:write') session.reviewed(true)
         else session.choose(Math.max(0, frame.step.options.findIndex((option) => option.correct)))
       }
       if (!session.next()) break
@@ -166,12 +187,12 @@ export class LmlSceneElement extends HTMLElement {
     e.shake = 0
     this.svg.classList.add('still')
     Object.assign(e.camera, { s: e.camera.ts, x: e.camera.tx, y: e.camera.ty })
-    if (this.shownSearch) {
-      const text = this.q('#hs-searchText'), result = this.q('#hs-searchResult')
-      if (text) text.textContent = this.shownSearch
-      if (result) result.style.opacity = '1'
-    }
+    this.set?.settle?.(this.runtime)
   }
+
+  // Host-driven navigation (controls="host"); also usable in standalone mode.
+  next() { this.go(1) }
+  back() { this.go(-1) }
 
   // What is on screen, in words (for tools that cannot see).
   describeFrame() {
@@ -181,6 +202,15 @@ export class LmlSceneElement extends HTMLElement {
     if (frame.kind === 'line') return { ...base, speaker: frame.step.speaker, text: frame.step.text }
     if (frame.kind === 'interaction') return { ...base, component: frame.step.component, id: frame.step.id, prompt: frame.step.props.prompt, solved: frame.solved }
     return base
+  }
+
+  // The sense of a term in this lesson: the lesson's glossary, then the world's.
+  gloss(term: string): (GlossEntry & { target: string }) | null {
+    const lesson = this.session?.lesson
+    if (!lesson) return null
+    const target = toTargetId(term, lesson.language)
+    const entry = lesson.glossary[target] || this.world?.glossary?.[target]
+    return entry ? { target, ...entry } : { target, gloss: '' }
   }
 
   private async loadFromAttributes() {
@@ -195,23 +225,41 @@ export class LmlSceneElement extends HTMLElement {
   }
 
   // ── Set ───────────────────────────────────────────────────────────────────
-  private castMember(characterKey: string | undefined) {
-    if (!characterKey || !this.world) return undefined
-    const entry = this.world.characters[characterKey]
-    return entry ? { spec: entry.rig, name: entry.name } : undefined
-  }
-
   private buildSet() {
     if (!this.session || !this.world) return
+    const world = this.world
     const placeKey = this.session.frame.stage.place.split(':')[1]
-    const place = this.world.places[placeKey]
+    const place = world.places[placeKey]
+    const set = getSet(place?.set)
+    if (!place || !set) {
+      this.showErrors(`place @${this.session.frame.stage.place} has no playable set ("set": "${place?.set ?? ''}"). Registered sets: ${registeredSets().join(', ')}.`)
+      return
+    }
+    this.set = set
     const style = STYLE_PACKS[this.getAttribute('style-pack') || 'anime-clean'] || STYLE_PACKS['anime-clean']
-    const ctx: HarborContext = { style, cast: { call: this.castMember(place?.cast?.call), tile: this.castMember(place?.cast?.tile) } }
-    this.svg.innerHTML = buildHarborOfficeSvg(ctx)
-    this.shownSearch = ''
-    this.engine.shot = this.engine.directed ? this.engine.shot : 'wide'
+    this.svg.innerHTML = set.build({
+      world,
+      place,
+      style,
+      cast: (slot) => {
+        const key = place.cast?.[slot]
+        const entry = key ? world.characters[key] : undefined
+        return entry ? { spec: entry.rig, name: entry.name } : undefined
+      }
+    })
+    this.runtime.memo = {}
+    this.engine.shot = this.engine.directed ? this.engine.shot : set.establishing
     this.resize()
     this.render()
+  }
+
+  private showErrors(message: string) {
+    this.root.querySelector('.errors')?.remove()
+    const pre = document.createElement('pre')
+    pre.className = 'errors'
+    pre.textContent = message
+    this.root.appendChild(pre)
+    this.dispatchEvent(new CustomEvent('lml-error', { detail: message }))
   }
 
   private q<T extends Element = SVGElement>(selector: string) { return this.svg.querySelector(selector) as T | null }
@@ -228,7 +276,9 @@ export class LmlSceneElement extends HTMLElement {
 
   private fit(snap: boolean) {
     const e = this.engine
-    const rect = HARBOR_SHOTS[e.shot] || HARBOR_SHOTS.wide
+    const shots = this.set?.shots
+    if (!shots) return
+    const rect = shots[e.shot] || shots[this.set!.defaultShot]
     const top = 12
     const availableWidth = e.size.w - 16
     const availableHeight = Math.max(140, e.size.h - top - e.bottomInset)
@@ -240,94 +290,25 @@ export class LmlSceneElement extends HTMLElement {
   // ── Frame ─────────────────────────────────────────────────────────────────
   private render() {
     const session = this.session
-    if (!session || !this.svg.firstChild) return
+    const set = this.set
+    if (!session || !set || !this.svg.firstChild) return
     const frame = session.frame
-    const stage = frame.stage
-    const screen = stage.screen || 'call'
-    const effects = new Set(stage.effects)
-
-    for (const name of ['call', 'share', 'logs', 'search']) {
-      const group = this.q(`#hs-v-${name}`)
-      if (!group) continue
-      group.style.opacity = name === screen ? '1' : '0'
-      group.style.pointerEvents = name === screen ? 'auto' : 'none'
-    }
-    const show = (selector: string, on: boolean, value = '1') => { const node = this.q(selector); if (node) node.style.opacity = on ? value : '0' }
-    show('#hs-pip', screen !== 'call')
-    show('#hs-typing', effects.has('typing'))
-    show('#hs-phoneScreen', effects.has('phone') || effects.has('mail'), '0.55')
-    show('#hs-rule', effects.has('scan') || effects.has('rule'))
-    const mail = this.q('#hs-mail')
-    if (mail) { mail.style.transform = effects.has('mail') ? 'translateY(0)' : 'translateY(-140px)'; mail.style.opacity = effects.has('mail') ? '1' : '0' }
-    if (effects.has('shake')) this.engine.shake = 14
-    if (effects.has('scan')) { const scan = this.root.querySelector('.scan')!; scan.classList.remove('run'); void (scan as HTMLElement).offsetWidth; scan.classList.add('run') }
-    let glow = effects.has('mail') ? '#ff5a5a' : GLOW[screen] || GLOW.call
-
-    // The monitor's search: typed once per query.
-    const query = stage.args.search || ''
-    if (screen === 'search' && query && query !== this.shownSearch) {
-      this.shownSearch = query
-      this.typeSearch(query)
-    }
-    if (screen === 'search' && query) glow = '#ff5a5a'
-    for (const selector of ['#hs-glowStop', '#hs-glowStop2']) { const stop = this.q(selector); if (stop) stop.style.stopColor = glow }
-
-    for (const [id, expression] of Object.entries(stage.expressions)) {
+    set.stage?.(frame, this.runtime)
+    for (const [id, expression] of Object.entries(frame.stage.expressions)) {
       const key = this.keyOf(id)!
       this.engine.expressions[key] = expression
       if (this.talking !== key) this.characters(key).forEach((root) => setExpression(root, expression))
     }
-
-    this.engine.shot = stage.camera || 'screen'
+    this.engine.shot = frame.stage.camera || set.defaultShot
     this.engine.camera.k = this.engine.directed ? 2.6 : 0.6
     this.engine.directed = true
     this.fit(false)
-
-    this.renderSurface(frame, screen)
+    set.surface?.(frame, this.runtime)
     this.renderBottom(frame)
+    this.dispatchEvent(new CustomEvent('lml-frame', { detail: { index: frame.index, blocked: session.blocked, canGoBack: session.canGoBack, frame: this.describeFrame() } }))
   }
 
-  // pick-evidence on the logs screen is played on the monitor itself.
-  private inScene(frame: Frame, screen: string) {
-    return frame.kind === 'interaction' && frame.step.component === 'lessonml:pick-evidence' && screen === 'logs'
-  }
-
-  private renderSurface(frame: Frame, screen: string) {
-    const host = this.q('#hs-logOptions')
-    if (!host) return
-    if (!this.inScene(frame, screen) || frame.kind !== 'interaction') {
-      host.querySelectorAll('.opt').forEach((option) => option.classList.remove('live'))
-      return
-    }
-    const key = frame.step.id
-    if (host.getAttribute('data-for') !== key) {
-      host.innerHTML = logOptionsMarkup(frame.step.options.map((option) => option.text))
-      host.setAttribute('data-for', key)
-    }
-    host.querySelectorAll<SVGElement>('.opt').forEach((option) => {
-      const index = Number(option.dataset.i)
-      option.classList.toggle('live', !frame.solved)
-      option.classList.toggle('right', frame.solved && frame.step.options[index]?.correct)
-      option.classList.toggle('wrong', !frame.solved && frame.misses[frame.misses.length - 1] === index)
-    })
-  }
-
-  private typeSearch(query: string) {
-    const text = this.q('#hs-searchText')
-    const result = this.q('#hs-searchResult')
-    const echo = this.q('#hs-searchEcho')
-    if (!text || !result) return
-    if (echo) echo.textContent = `“${query}”.`
-    result.style.opacity = '0'
-    let typed = 0
-    const tick = () => {
-      if (!this.alive || this.shownSearch !== query) return
-      text.textContent = query.slice(0, ++typed)
-      if (typed < query.length) this.timers.push(window.setTimeout(tick, 45))
-      else this.timers.push(window.setTimeout(() => { result.style.opacity = '1'; this.engine.shake = 8 }, 350))
-    }
-    tick()
-  }
+  private inScene(frame: Frame) { return Boolean(this.set?.hosts?.(frame)) }
 
   // ── Dialogue and interaction panel ────────────────────────────────────────
   private renderBottom(frame: Frame) {
@@ -343,8 +324,7 @@ export class LmlSceneElement extends HTMLElement {
       this.dispatchEvent(new CustomEvent('lml-end', { detail: { state: this.session?.state, evidence: this.session?.evidence } }))
       return
     }
-    const screen = frame.stage.screen || 'call'
-    if (frame.kind === 'interaction' && !this.inScene(frame, screen)) this.bottom.appendChild(this.panelFor(frame))
+    if (frame.kind === 'interaction' && !this.inScene(frame)) this.bottom.appendChild(this.panelFor(frame))
 
     let line: LineStep | null = null
     let translation = ''
@@ -374,19 +354,24 @@ export class LmlSceneElement extends HTMLElement {
     box.querySelector('.foot')!.textContent = translation && frame.kind === 'line' ? ui.tapForTranslation : ''
     box.onclick = (event) => {
       const word = (event.target as HTMLElement).closest('b')
-      if (word) { this.dispatchEvent(new CustomEvent('lml-word', { detail: { word: word.getAttribute('data-word') } })); return }
+      if (word) {
+        const term = word.getAttribute('data-word') || ''
+        this.dispatchEvent(new CustomEvent('lml-word', { detail: { word: term, ...this.gloss(term) } }))
+        return
+      }
       if (this.typing) this.typing.done()
       else if (translation) box.classList.toggle('open')
     }
     this.bottom.appendChild(box)
+    this.typeLine(box.querySelector('.text')!, line, line.speaker ? this.keyOf(line.speaker) : null)
+    if (this.hostControls) return
     const hint = document.createElement('button')
     hint.className = 'hint'
     hint.type = 'button'
     const blocked = this.session?.blocked
-    hint.textContent = blocked ? (this.inScene(frame, screen) ? ui.solveHere : ui.blocked) : ui.next
+    hint.textContent = blocked ? (this.inScene(frame) ? ui.solveHere : ui.blocked) : ui.next
     hint.onclick = () => this.go(1)
     this.bottom.appendChild(hint)
-    this.typeLine(box.querySelector('.text')!, line, line.speaker ? this.keyOf(line.speaker) : null)
   }
 
   private panelFor(frame: Extract<Frame, { kind: 'interaction' }>) {
@@ -425,6 +410,25 @@ export class LmlSceneElement extends HTMLElement {
       const submit = () => { if (!frame.solved && input.value.trim()) after(session.spoke(input.value.toLowerCase().includes(target)).correct) }
       checkButton.onclick = submit
       input.addEventListener('keydown', (event) => { event.stopPropagation(); if (event.key === 'Enter') submit() })
+      return panel
+    }
+    if (step.component === 'lessonml:write') {
+      panel.innerHTML = `<textarea></textarea><div class="row" style="justify-content:flex-end"><button class="act" type="button">${this.ui.submit}</button></div>`
+      const area = panel.querySelector('textarea')!
+      const submitButton = panel.querySelector<HTMLButtonElement>('.act')!
+      area.placeholder = this.ui.write
+      area.addEventListener('keydown', (event) => event.stopPropagation())
+      if (frame.solved) { area.disabled = true; submitButton.remove(); return panel }
+      submitButton.onclick = async () => {
+        const text = area.value.trim()
+        if (!text) return
+        submitButton.disabled = true
+        submitButton.textContent = this.ui.reviewing
+        const targets = (step.props.targets || '').split(',').map((target) => target.trim()).filter(Boolean)
+        const verdict = await this.reviewer({ text, prompt: step.props.prompt || '', targets, minWords: Number(step.props.min_words || 0), language: session.lesson.language })
+          .catch(() => ({ pass: false, feedback: 'Review failed; try again.' }))
+        after(session.reviewed(verdict.pass, verdict.feedback).correct)
+      }
       return panel
     }
     step.options.forEach((option, index) => {
@@ -501,6 +505,10 @@ export class LmlSceneElement extends HTMLElement {
   }
 
   private bindInput() {
+    if (this.hostControls) {
+      this.svg.addEventListener('click', (event) => this.pickInScene(event))
+      return
+    }
     let start: { x: number; y: number } | null = null
     const fromEditable = (event: Event) => (event.composedPath()[0] as HTMLElement | undefined)?.closest?.('input, textarea')
     const down = (x: number, y: number) => { start = { x, y } }
@@ -532,15 +540,18 @@ export class LmlSceneElement extends HTMLElement {
       this.engine.pointer.x = ((event.clientX - box.left) / box.width - 0.5) * 2
       this.engine.pointer.y = ((event.clientY - box.top) / box.height - 0.5) * 2
     })
-    this.svg.addEventListener('click', (event) => {
-      const option = (event.target as Element).closest('.opt') as SVGElement | null
-      const session = this.session
-      if (!option || !session || session.frame.kind !== 'interaction' || session.frame.solved) return
-      session.choose(Number(option.dataset.i))
-      this.emitAnswer()
-      this.engine.shake = session.frame.kind === 'interaction' && !session.frame.solved ? 5 : 0
-      this.render()
-    })
+    this.svg.addEventListener('click', (event) => this.pickInScene(event))
+  }
+
+  // An option the set drew inside the scene ([data-i] under .opt).
+  private pickInScene(event: Event) {
+    const option = (event.target as Element).closest('.opt') as SVGElement | null
+    const session = this.session
+    if (!option || !session || session.frame.kind !== 'interaction' || session.frame.solved) return
+    session.choose(Number(option.dataset.i))
+    this.emitAnswer()
+    if (session.frame.kind === 'interaction' && !session.frame.solved) this.runtime.shake(5)
+    this.render()
   }
 
   // ── Loops: blink, lip flaps, breathing, camera, rain ─────────────────────
@@ -564,7 +575,6 @@ export class LmlSceneElement extends HTMLElement {
       this.timers.push(window.setTimeout(flap, 70 + Math.random() * 70))
     }
     flap()
-    const drops = new Map<Element, { x: number; y: number; v: number; l: number }>()
     let last = performance.now()
     const frame = (now: number) => {
       if (!this.alive) return
@@ -581,7 +591,7 @@ export class LmlSceneElement extends HTMLElement {
       const drift = e.still ? 0 : 1
       const hx = drift * (Math.sin(t * 0.37) * 3 + Math.sin(t * 0.91) * 1.2) + (Math.random() - 0.5) * e.shake
       const hy = drift * Math.cos(t * 0.29) * 2.4 + (Math.random() - 0.5) * e.shake
-      this.q('#hs-cam')?.setAttribute('transform', `translate(${(c.x + hx).toFixed(2)},${(c.y + hy).toFixed(2)}) scale(${c.s.toFixed(4)})`)
+      this.q('[data-camera]')?.setAttribute('transform', `translate(${(c.x + hx).toFixed(2)},${(c.y + hy).toFixed(2)}) scale(${c.s.toFixed(4)})`)
       this.svg.querySelectorAll<SVGElement>('.px').forEach((layer) => {
         const f = Number(layer.dataset.f)
         layer.setAttribute('transform', `translate(${(-e.pointer.sx * 26 * (f - 0.85)).toFixed(2)},${(-e.pointer.sy * 14 * (f - 0.85)).toFixed(2)})`)
@@ -597,14 +607,7 @@ export class LmlSceneElement extends HTMLElement {
         root.querySelector('.hf')?.setAttribute('transform', head)
         root.querySelectorAll<SVGElement>('.lock').forEach((lock, n) => lock.setAttribute('transform', `rotate(${(Math.sin(t * 1.3 + n + i) * 1.4).toFixed(2)} ${lock.dataset.pivot})`))
       })
-      this.svg.querySelectorAll('.drop').forEach((drop) => {
-        let p = drops.get(drop)
-        if (!p) { p = { x: 120 + Math.random() * 960, y: 120 + Math.random() * 700, v: 900 + Math.random() * 500, l: 18 + Math.random() * 26 }; drops.set(drop, p) }
-        p.y += p.v * dt; p.x -= p.v * dt * 0.12
-        if (p.y > 830) { p.y = 110 - Math.random() * 60; p.x = 140 + Math.random() * 1000 }
-        drop.setAttribute('x1', p.x.toFixed(1)); drop.setAttribute('y1', p.y.toFixed(1))
-        drop.setAttribute('x2', (p.x + p.l * 0.12).toFixed(1)); drop.setAttribute('y2', (p.y - p.l).toFixed(1))
-      })
+      this.set?.tick?.(this.runtime, dt, t)
       this.frameId = requestAnimationFrame(frame)
     }
     this.frameId = requestAnimationFrame(frame)

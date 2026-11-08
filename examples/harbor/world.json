@@ -118,5 +118,51 @@
         "tile": "dana"
       }
     }
+  },
+  "glossary": {
+    "en:disclosure": {
+      "gloss": "（风险等信息的）披露",
+      "definition": "information a company must make known"
+    },
+    "en:liability": {
+      "gloss": "法律责任",
+      "definition": "legal responsibility for something"
+    },
+    "en:accountable": {
+      "gloss": "须负责的",
+      "definition": "expected to explain and take responsibility"
+    },
+    "en:scrutiny": {
+      "gloss": "严格审查",
+      "definition": "close and careful examination"
+    },
+    "en:verify": {
+      "gloss": "核实",
+      "definition": "to check that something is true"
+    },
+    "en:pitch": {
+      "gloss": "（向决策者的）提案；推介",
+      "definition": "a short talk to persuade someone to accept a plan"
+    },
+    "en:blunt": {
+      "gloss": "说话直截了当的",
+      "definition": "saying what you think without trying to be polite"
+    },
+    "en:consensus": {
+      "gloss": "共识",
+      "definition": "agreement among most people in a group"
+    },
+    "en:skeptical": {
+      "gloss": "持怀疑态度的",
+      "definition": "not easily convinced"
+    },
+    "en:hesitate": {
+      "gloss": "犹豫",
+      "definition": "to pause because you are not sure"
+    },
+    "en:invent": {
+      "gloss": "编造",
+      "definition": "to make up something that is not true"
+    }
   }
 }

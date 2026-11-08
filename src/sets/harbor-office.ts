@@ -3,10 +3,10 @@
 // the room is placeholder vector art. Every id is prefixed with `hs-`.
 
 /* eslint-disable max-len */
-import { renderCharacter, type CharacterSpec } from '../rig/rig.js'
+import { renderCharacter } from '../rig/rig.js'
 import type { StylePack } from '../rig/styles.js'
-
-export interface CastMember { spec?: CharacterSpec; name: string }
+import type { Frame } from '../player/session.js'
+import type { CastMember, SetDefinition, SetRuntime } from './types.js'
 export interface HarborContext {
   style: StylePack
   // Slots this set draws: the main call window and the small tile.
@@ -201,7 +201,7 @@ function buildWorld(ctx: HarborContext) {
     <clipPath id="windowClip"><rect x="120" y="120" width="960" height="700"/></clipPath>
     <clipPath id="screenClip"><rect width="700" height="394" rx="4"/></clipPath>
   </defs>
-  <g id="cam">
+  <g id="cam" data-camera>
     <rect x="-3000" y="-3000" width="7200" height="7400" fill="url(#wall)"/>
     <g clip-path="url(#windowClip)">
       <g class="px" data-f=".25"><rect x="60" y="60" width="1080" height="820" fill="url(#sky)"/>
@@ -307,3 +307,96 @@ export const logOptionsMarkup = (options: string[]) => options.slice(0, 3).map(w
     <text x="200" y="${110 + i * 82}" font-size="18" fill="#e9eeff" font-family="-apple-system,Arial">${lines[0]}</text>
     <text x="200" y="${134 + i * 82}" font-size="18" fill="#e9eeff" font-family="-apple-system,Arial">${lines[1]}</text>
   </g>`).join('')
+
+// ── Set definition: how a frame's stage looks in this room ─────────────────
+const GLOW: Record<string, string> = { call: '#ffd2a8', share: '#e6eeff', logs: '#5fe3ff', search: '#e6eeff' }
+
+const typeSearch = (rt: SetRuntime, query: string) => {
+  const text = rt.q('#hs-searchText'), result = rt.q('#hs-searchResult'), echo = rt.q('#hs-searchEcho')
+  if (!text || !result) return
+  if (echo) echo.textContent = `“${query}”.`
+  result.style.opacity = '0'
+  let typed = 0
+  const tick = () => {
+    if (rt.memo.search !== query || rt.memo.searchSettled) return
+    text.textContent = query.slice(0, ++typed)
+    if (typed < query.length) rt.later(tick, 45)
+    else rt.later(() => { result.style.opacity = '1'; rt.shake(8) }, 350)
+  }
+  tick()
+}
+
+const hostsPick = (frame: Frame) => frame.kind === 'interaction' && frame.step.component === 'lessonml:pick-evidence' && (frame.stage.screen || 'call') === 'logs'
+
+export const HARBOR_OFFICE_SET: SetDefinition = {
+  id: 'harbor-office',
+  slots: ['call', 'tile'],
+  shots: HARBOR_SHOTS,
+  establishing: 'wide',
+  defaultShot: 'screen',
+  build: (ctx) => buildHarborOfficeSvg({ style: ctx.style, cast: { call: ctx.cast('call'), tile: ctx.cast('tile') } }),
+  hosts: hostsPick,
+  stage(frame, rt) {
+    const screen = frame.stage.screen || 'call'
+    const effects = new Set(frame.stage.effects)
+    for (const name of ['call', 'share', 'logs', 'search']) {
+      const group = rt.q(`#hs-v-${name}`)
+      if (!group) continue
+      group.style.opacity = name === screen ? '1' : '0'
+      group.style.pointerEvents = name === screen ? 'auto' : 'none'
+    }
+    const show = (selector: string, on: boolean, value = '1') => { const node = rt.q(selector); if (node) node.style.opacity = on ? value : '0' }
+    show('#hs-pip', screen !== 'call')
+    show('#hs-typing', effects.has('typing'))
+    show('#hs-phoneScreen', effects.has('phone') || effects.has('mail'), '0.55')
+    show('#hs-rule', effects.has('scan') || effects.has('rule'))
+    const mail = rt.q('#hs-mail')
+    if (mail) { mail.style.transform = effects.has('mail') ? 'translateY(0)' : 'translateY(-140px)'; mail.style.opacity = effects.has('mail') ? '1' : '0' }
+    if (effects.has('shake')) rt.shake(14)
+    if (effects.has('scan')) rt.scan()
+    let glow = effects.has('mail') ? '#ff5a5a' : GLOW[screen] || GLOW.call
+    const query = frame.stage.args.search || ''
+    if (screen === 'search' && query) {
+      glow = '#ff5a5a'
+      if (rt.memo.search !== query) { rt.memo.search = query; rt.memo.searchSettled = false; typeSearch(rt, query) }
+    }
+    for (const selector of ['#hs-glowStop', '#hs-glowStop2']) { const stop = rt.q(selector); if (stop) stop.style.stopColor = glow }
+  },
+  surface(frame, rt) {
+    const host = rt.q('#hs-logOptions')
+    if (!host) return
+    if (!hostsPick(frame) || frame.kind !== 'interaction') {
+      host.querySelectorAll('.opt').forEach((option) => option.classList.remove('live'))
+      return
+    }
+    if (host.getAttribute('data-for') !== frame.step.id) {
+      host.innerHTML = logOptionsMarkup(frame.step.options.map((option) => option.text))
+      host.setAttribute('data-for', frame.step.id)
+    }
+    host.querySelectorAll<SVGElement>('.opt').forEach((option) => {
+      const index = Number(option.dataset.i)
+      option.classList.toggle('live', !frame.solved)
+      option.classList.toggle('right', frame.solved && Boolean(frame.step.options[index]?.correct))
+      option.classList.toggle('wrong', !frame.solved && frame.misses[frame.misses.length - 1] === index)
+    })
+  },
+  settle(rt) {
+    const query = rt.memo.search as string | undefined
+    if (!query) return
+    rt.memo.searchSettled = true
+    const text = rt.q('#hs-searchText'), result = rt.q('#hs-searchResult')
+    if (text) text.textContent = query
+    if (result) result.style.opacity = '1'
+  },
+  tick(rt, dt) {
+    const drops = (rt.memo.drops ??= new Map<Element, { x: number; y: number; v: number; l: number }>()) as Map<Element, { x: number; y: number; v: number; l: number }>
+    rt.qa('.drop').forEach((drop) => {
+      let p = drops.get(drop)
+      if (!p) { p = { x: 120 + Math.random() * 960, y: 120 + Math.random() * 700, v: 900 + Math.random() * 500, l: 18 + Math.random() * 26 }; drops.set(drop, p) }
+      p.y += p.v * dt; p.x -= p.v * dt * 0.12
+      if (p.y > 830) { p.y = 110 - Math.random() * 60; p.x = 140 + Math.random() * 1000 }
+      drop.setAttribute('x1', p.x.toFixed(1)); drop.setAttribute('y1', p.y.toFixed(1))
+      drop.setAttribute('x2', (p.x + p.l * 0.12).toFixed(1)); drop.setAttribute('y2', (p.y - p.l).toFixed(1))
+    })
+  }
+}

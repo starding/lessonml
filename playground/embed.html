@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LessonML · Embedded</title>
+<style>
+  html, body { margin:0; height:100%; background:#f4f1ea; color:#1b1d2a; font-family:-apple-system,"PingFang SC",Arial,sans-serif; }
+  .app { display:grid; grid-template-rows:auto 1fr auto; height:100%; max-width:520px; margin:0 auto; }
+  header, footer { display:flex; gap:8px; align-items:center; padding:10px 14px; }
+  header select { flex:1; font-size:14px; padding:6px; border-radius:10px; }
+  header span { font-size:12px; color:#6b6f80; }
+  lml-scene { border-radius:18px; margin:0 10px; min-height:0; }
+  footer button { flex:1; border:0; border-radius:12px; padding:12px; font-size:15px; font-weight:700; background:#1b1d2a; color:#fff; }
+  footer button:disabled { opacity:.35; }
+  #gloss { position:fixed; left:50%; bottom:88px; transform:translateX(-50%); background:#fff; border-radius:14px; padding:10px 14px; box-shadow:0 10px 30px rgba(0,0,0,.2); font-size:14px; display:none; }
+  #record { font:11px/1.5 ui-monospace,Menlo,monospace; color:#2f6f73; padding:0 14px 8px; min-height:2em; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <select id="lesson">
+      <option value="harbor/compliance-call">财报夜 · 合规官（语言）</option>
+      <option value="harbor/pitch-at-2am">财报夜 · 凌晨两点的提案（语言）</option>
+      <option value="classroom/equal-fractions">等值分数（数学）</option>
+    </select>
+    <span id="position"></span>
+  </header>
+  <lml-scene id="scene" controls="host" style-pack="flat-modern"></lml-scene>
+  <div>
+    <div id="record"></div>
+    <footer><button id="back" type="button">← 上一步</button><button id="next" type="button">下一步 →</button></footer>
+  </div>
+</div>
+<div id="gloss"></div>
+<script type="module">
+// A host app embedding the player: it owns navigation, the word card and the
+// learner record; the player only draws and reports.
+import '../dist/src/player/element.js'
+const scene = document.getElementById('scene')
+const select = document.getElementById('lesson')
+const load = async () => {
+  const [dir, name] = select.value.split('/')
+  const [source, world] = await Promise.all([fetch(`../examples/${dir}/${name}.lml`).then((r) => r.text()), fetch(`../examples/${dir}/world.json`).then((r) => r.json())])
+  document.getElementById('record').textContent = ''
+  scene.load(source, world)
+}
+select.onchange = load
+document.getElementById('next').onclick = () => scene.next()
+document.getElementById('back').onclick = () => scene.back()
+scene.addEventListener('lml-frame', (event) => {
+  document.getElementById('position').textContent = `第 ${event.detail.index + 1} 帧`
+  document.getElementById('next').disabled = event.detail.blocked || event.detail.frame?.kind === 'end'
+  document.getElementById('back').disabled = !event.detail.canGoBack
+})
+scene.addEventListener('lml-evidence', (event) => { document.getElementById('record').textContent += `✓ ${event.detail.facet} ${event.detail.target}  ` })
+scene.addEventListener('lml-word', (event) => {
+  const card = document.getElementById('gloss')
+  card.textContent = `${event.detail.word} · ${event.detail.gloss || '（无释义）'}${event.detail.definition ? ` — ${event.detail.definition}` : ''}`
+  card.style.display = 'block'
+  clearTimeout(card.timer); card.timer = setTimeout(() => card.style.display = 'none', 2600)
+})
+load()
+</script>
+</body>
+</html>

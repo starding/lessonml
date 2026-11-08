@@ -32,7 +32,7 @@ test('the authoring loop: guide, world, compile, simulate', async () => {
     assert.match(played, /branch line \d+ \(if trust\.priya > 0\): taken/)
     const missed = textOf(await client.callTool({ name: 'lessonml_simulate', arguments: { path: 'examples/harbor/compliance-call.lml', answers: { 'case-1': [0, 2, 1] } } }))
     assert.match(missed, /✗ option 0 .* hint: 这句的数据来自财报原文/)
-    assert.match(missed, /evidence: read verify \(after a miss\)/)
+    assert.match(missed, /evidence: read en:verify \(after a miss\)/)
   } finally {
     await client.close()
   }

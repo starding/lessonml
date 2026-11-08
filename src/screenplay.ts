@@ -38,36 +38,41 @@ export interface ParseResult {
 
 export function parseScreenplay(source: string): ParseResult {
   const diagnostics: Diagnostic[] = []
-  const lesson: Lesson = { id: '', world: '', language: 'en', state: {}, scenes: [] }
+  const lesson: Lesson = { id: '', world: '', language: 'en', state: {}, glossary: {}, scenes: [] }
   const rawLines = source.replace(/\r\n/g, '\n').split('\n')
   let cursor = 0
 
   // ── Front matter ──────────────────────────────────────────────────────────
   if (rawLines[0]?.trim() === '---') {
     cursor = 1
-    let inState = false
+    let section: 'state' | 'glossary' | null = null
     for (; cursor < rawLines.length && rawLines[cursor].trim() !== '---'; cursor++) {
       const raw = rawLines[cursor]
       if (!raw.trim() || raw.trim().startsWith('//')) continue
       const nested = /^\s+/.test(raw)
-      const match = raw.trim().match(/^([a-z_.0-9]+)\s*:\s*(.*)$/)
+      const match = raw.trim().match(/^([a-z_.0-9:'/-]+)\s*:\s*(.*)$/)
       if (!match) {
         diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `cannot read "${raw.trim()}". Front matter lines are "key: value".` })
         continue
       }
       const [, key, value] = match
-      if (nested && inState) {
+      if (nested && section === 'glossary') {
+        const [gloss, definition] = unquote(value).split('|').map((part) => part.trim())
+        lesson.glossary[key] = definition ? { gloss, definition } : { gloss }
+        continue
+      }
+      if (nested && section === 'state') {
         const number = Number(value)
         if (Number.isNaN(number)) diagnostics.push({ line: cursor + 1, code: 'state-value', message: `state ${key} must start as a number, got "${value}".` })
         else lesson.state[key] = number
         continue
       }
-      inState = key === 'state'
+      section = key === 'state' || key === 'glossary' ? key : null
       if (key === 'lesson') lesson.id = value.trim()
       else if (key === 'world') lesson.world = value.trim()
       else if (key === 'language') lesson.language = value.trim()
       else if (key === 'learner_language') lesson.learnerLanguage = value.trim()
-      else if (key !== 'state') diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `unknown key "${key}".`, suggestions: ['lesson', 'world', 'language', 'learner_language', 'state'] })
+      else if (!section) diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `unknown key "${key}".`, suggestions: ['lesson', 'world', 'language', 'learner_language', 'state', 'glossary'] })
     }
     cursor += 1
   }
@@ -94,8 +99,8 @@ export function parseScreenplay(source: string): ParseResult {
   }
 
   const parseAction = (line: SourceLine): Action | null => {
-    const evidence = line.text.match(/^evidence\s+([a-z-]+)\s+([a-z'-]+)$/)
-    if (evidence) return { kind: 'evidence', line: line.no, facet: evidence[1], word: evidence[2] }
+    const evidence = line.text.match(/^evidence\s+([a-z-]+)\s+([A-Za-z0-9:'/-]+)$/)
+    if (evidence) return { kind: 'evidence', line: line.no, facet: evidence[1], target: evidence[2] }
     const set = line.text.match(SET_ACTION)
     if (set) return { kind: 'set', line: line.no, variable: set[1], op: set[2] as Action['op'], value: Number(set[3]) }
     const say = parseLine(line)
@@ -141,7 +146,7 @@ export function parseScreenplay(source: string): ParseResult {
         for (const actionLine of [...inlineParts, ...nested]) {
           const action = parseAction(actionLine)
           if (action) actions.push(action)
-          else diagnostics.push({ line: actionLine.no, code: 'action', message: `cannot read action "${actionLine.text}".`, suggestions: ['evidence <facet> <word>', 'set <variable> += <number>', 'NAME (expression): "line"'] })
+          else diagnostics.push({ line: actionLine.no, code: 'action', message: `cannot read action "${actionLine.text}".`, suggestions: ['evidence <facet> <target>', 'set <variable> += <number>', 'NAME (expression): "line"'] })
         }
         step.handlers[handler[1]] = [...(step.handlers[handler[1]] || []), ...actions]
         continue

@@ -52,6 +52,7 @@ DANA (stern): "Someone has to be {accountable} for what this thing says."
   zh: 你去搜那份报告，它根本不存在。Ledger 编了一个出处。
 
 if trust.priya > 0:
+  ! screen call
   ! camera priya
   PRIYA (smile): "Good. You check before you speak. So should Ledger."
     zh: 很好。你先核实再开口，Ledger 也该这样。

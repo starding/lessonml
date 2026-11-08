@@ -41,7 +41,23 @@ A place declares the stage verbs it understands and the arguments each verb acce
 
 ### 3.2 Evidence vocabulary
 
-Evidence has five facets: `read`, `listen`, `speak`, `write` and `recall`. Each evidence event is `(facet, word or skill, outcome)`, and maps onto xAPI statements:
+An evidence event is `(facet, target, outcome)`.
+
+The **target** is a namespaced id: `en:verify` for an English word, `math:fraction-equivalence` for a skill. In `evidence <facet> <target>`, a bare word means `<lesson language>:<word>`.
+
+**Facets** come in packs. A small core is shared by every subject; each subject adds its own:
+
+| Pack | Facets |
+|---|---|
+| core | `recall`, `apply`, `explain`, `predict` |
+| language | `read`, `listen`, `speak`, `write` |
+| math | `compute` |
+
+New subjects add packs. They never change the core.
+
+The evidence format is the hardest thing to change later, because learner records, host apps and training data all depend on it. That is why it was made subject-neutral before anything else depended on it.
+
+Outcomes map onto xAPI statements:
 
 | Outcome | xAPI verb |
 |---|---|
@@ -58,7 +74,28 @@ A component declares:
 - the evidence facets it can produce;
 - an example written for models.
 
-The core set is `lessonml:pick-evidence`, `lessonml:cloze`, `lessonml:choose-reply` and `lessonml:speak`. They started in language learning, but none of them is about language only.
+The core set is `lessonml:pick-evidence`, `lessonml:cloze`, `lessonml:choose-reply`, `lessonml:speak` and `lessonml:write`. They started in language learning, but none of them is about language only.
+
+`lessonml:write` is judged by a **reviewer** the host app supplies: an LLM, a teacher queue, a rubric. Without one, the default reviewer checks that the required words are used and the answer is long enough. Feedback is shown as the hint.
+
+### 3.4 Glossary
+
+A world, and optionally a lesson, maps target ids to the sense a term has *here*:
+
+```json
+"glossary": { "en:pitch": { "gloss": "提案", "definition": "a short talk to persuade someone" } }
+```
+
+```text
+glossary:
+  pitch: 提案 | a short talk to persuade someone
+```
+
+Lesson entries override the world's. When a learner taps a target word, the player reports it with its gloss (`lml-word`). `lessonml_simulate` warns about marked words that have no gloss.
+
+### 3.5 Acceptance
+
+`examples/` always contains at least one non-language lesson; today that is `classroom/equal-fractions.lml`. Every format change must keep every example compiling, playing to the end without warnings, and rendering (`test/acceptance.test.ts`). A change that only works for language lessons fails here, not when someone tries to teach physics.
 
 ## 4. IR
 
@@ -169,7 +206,7 @@ Runtimes rely on this part contract:
 
 `generateCharacter(seed)` makes a new character that is consistent under every pack.
 
-## 8. Player (v0.2)
+## 8. Player (v0.2, v0.4)
 
 `LessonSession` (`src/player/session.ts`) is the reference interpreter: a pure state machine over the IR, shared by every runtime. It owns order, state, branches, blocking, back navigation and evidence.
 
@@ -187,19 +224,40 @@ Stage semantics:
 <lml-scene src="lesson.lml" world="world.json" style-pack="anime-clean"></lml-scene>
 ```
 
-The element draws the place's set, fills the set's character slots (`place.cast`), and runs the camera, parallax, breathing, blinking and lip flaps. Navigation follows one grammar:
-- swipe up, wheel, ↓ or Space moves on;
-- ↑ goes back;
-- tapping a line finishes it or shows the translation.
+The element draws the place's set, fills the set's character slots (`place.cast`), and runs the camera, parallax, breathing, blinking and lip flaps.
 
-A set may host an interaction inside the scene. The harbor office, for example, draws `pick-evidence` options on its monitor's `logs` screen. Every other interaction uses the generic panel: option buttons, a cloze input, or speech recognition with a typed fallback.
+The element has two modes, like `<video>`:
+- **Standalone** (the default) brings its own navigation:
+  - swipe up, wheel, ↓ or Space moves on;
+  - ↑ goes back;
+  - tapping a line finishes it or shows the translation;
+  - a hint at the bottom says what to do next.
+- **Embedded** (`controls="host"`): the host app drives the lesson with `next()` and `back()`, listens to `lml-frame` (`index`, `blocked`, `canGoBack`, `frame`), and draws its own navigation. See `playground/embed.html`.
+
+The generic panels are option buttons, a cloze input, speech recognition with a typed fallback, and a text area for `write`. Set `element.reviewer` to judge writing.
+
+### 8.1 Sets
+
+The player draws nothing about any particular place. A **set** (`src/sets/types.ts`) supplies:
+- its SVG, with one `[data-camera]` group that the camera moves;
+- named shots;
+- character slots;
+- how a frame's stage looks (`stage`);
+- optionally, interactions drawn inside the scene (`hosts` and `surface`), `settle` for previews, and `tick` for ambient motion.
+
+Register a set with `registerSet()`. A place points to it with `"set": "<id>"` and fills its slots with `"cast": { "<slot>": "<character>" }`.
+
+Two sets ship today:
+- `harbor-office`: a night office with a monitor that can show a call, a shared page, logs or a search. It plays `pick-evidence` on the logs screen.
+- `classroom`: a whiteboard (`! board <text>`, where ` | ` starts a new line) and one mentor slot.
 
 The element emits these events:
+- `lml-frame` (every frame)
 - `lml-evidence`
 - `lml-state`
-- `lml-word`
+- `lml-word` (with the target id, gloss and definition)
 - `lml-end`
-- `lml-error` (the compiler diagnostics)
+- `lml-error` (the compiler diagnostics, or a place without a set)
 
 ## 9. MCP server (v0.3)
 
@@ -224,5 +282,7 @@ Simulate is cheap and catches structural problems. For example, it catches a cha
 | v0.1 | Syntax, IR, compiler and diagnostics, core components, character rig, three style packs |
 | v0.2 | ✅ Interpreter (`LessonSession`) and `<lml-scene>` web component; place sets with character slots; camera and parallax |
 | v0.3 | ✅ MCP server: guide, describe_world, compile, simulate, render_preview, so a model can write, check, play and see its work |
-| v0.4 | Improvisation slots: lines a runtime model may improvise within a character card, state and lesson goal |
-| v0.5 | Pack registry; the first non-language components (simulation sliders, charts) |
+| v0.4 | ✅ Subject-neutral evidence (targets and facet packs); glossary; `write` with pluggable reviewers; pluggable sets; embedded mode; math acceptance lesson |
+| v0.5 | Expression layer (safe declarative formulas over state); live props bound to it; numeric answers with tolerance and units; formula typesetting; predict-then-reveal simulations |
+| v0.6 | Improvisation slots: lines a runtime model may improvise within a character card, state and lesson goal |
+| later | Pack registry; npm release |

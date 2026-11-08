@@ -42,7 +42,7 @@ test('an interaction blocks until solved, and wrong answers give hints and handl
   assert.equal(session.state['trust.priya'], 0)
   const right = session.choose(1)
   assert.equal(right.correct, true)
-  assert.deepEqual(right.evidence.map((e) => [e.facet, e.word, e.firstTry]), [['read', 'verify', false]])
+  assert.deepEqual(right.evidence.map((e) => [e.facet, e.target, e.firstTry]), [['read', 'en:verify', false]])
   assert.equal(session.state['trust.priya'], 1)
   assert.equal(session.next(), true)
 })

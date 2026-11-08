@@ -1,0 +1,29 @@
+{
+  "namespace": "academy",
+  "title": "Academy: a bright classroom and a patient teacher",
+  "characters": {
+    "lin": {
+      "name": "Lin",
+      "description": "Ms. Lin, a math teacher. Warm, unhurried, asks questions instead of giving answers; never says 'wrong', says 'look again'.",
+      "expressions": ["neutral", "smile", "stern", "surprised", "worried"],
+      "rig": { "id": "lin", "hair": "bob", "outfit": "blazer", "glasses": true, "colors": { "skin": "#f3d4c0", "hair": "#3b2a22", "eyes": "#5a4a3a", "cloth": "#2f6f73" } }
+    }
+  },
+  "places": {
+    "classroom": {
+      "name": "Classroom, morning",
+      "description": "A whiteboard on the right, Ms. Lin standing beside it, sunlight from the window.",
+      "set": "classroom",
+      "cast": { "mentor": "lin" },
+      "stage": {
+        "camera": ["wide", "mentor", "board"],
+        "board": ["*"]
+      }
+    }
+  },
+  "glossary": {
+    "en:numerator": { "gloss": "分子", "definition": "the number above the line in a fraction" },
+    "en:denominator": { "gloss": "分母", "definition": "the number below the line in a fraction" },
+    "en:equivalent": { "gloss": "等值的", "definition": "having the same value" }
+  }
+}

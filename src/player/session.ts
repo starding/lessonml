@@ -24,7 +24,8 @@ export interface StageState {
 
 export interface EvidenceEvent {
   facet: string
-  word: string
+  // Namespaced target id: "en:verify", "math:fraction-equivalence".
+  target: string
   interaction: string
   firstTry: boolean
   // Position in the lesson, so a host can de-duplicate on replay.
@@ -128,6 +129,12 @@ export class LessonSession {
     return this.resolve(frame, ok, -1, null, ok ? 'spoken' : 'missed')
   }
 
+  // write: the host's reviewer (or the default check) judged the text.
+  reviewed(pass: boolean, feedback?: string): AnswerResult {
+    const frame = this.requireInteraction()
+    return this.resolve(frame, pass, -1, feedback ?? null)
+  }
+
   private requireInteraction() {
     const frame = this.frame
     if (frame.kind !== 'interaction') throw new Error('no interaction is open')
@@ -158,7 +165,7 @@ export class LessonSession {
   }
 
   private apply(action: Action, step: InteractionStep, firstTry: boolean, at: number): { evidence?: EvidenceEvent; say?: LineStep } {
-    if (action.kind === 'evidence') return { evidence: { facet: action.facet!, word: action.word!, interaction: step.id, firstTry, at } }
+    if (action.kind === 'evidence') return { evidence: { facet: action.facet!, target: action.target!, interaction: step.id, firstTry, at } }
     if (action.kind === 'set') {
       const current = this.s.state[action.variable!] ?? 0
       const value = action.value ?? 0

@@ -25,15 +25,48 @@ export interface PlaceEntry {
   cast?: Record<string, string>
 }
 
+// A term as this world means it: the in-context sense, not the dictionary's
+// most common one (pitch = 提案 in a boardroom, 音高 in a music room).
+export interface GlossEntry {
+  gloss: string
+  definition?: string
+}
+
 export interface World {
   namespace: string
   title: string
   characters: Record<string, CharacterEntry>
   places: Record<string, PlaceEntry>
+  // Keys are target ids, e.g. "en:pitch" or "math:denominator".
+  glossary?: Record<string, GlossEntry>
 }
 
-export const EVIDENCE_FACETS = ['read', 'listen', 'speak', 'write', 'recall'] as const
-export type EvidenceFacet = (typeof EVIDENCE_FACETS)[number]
+// Evidence facets (SPEC.md §3.2): a small core every subject shares, plus
+// packs a subject adds. An evidence event is (facet, target), where the target
+// is a namespaced id: "en:verify", "math:fraction-equivalence".
+export const FACET_PACKS = {
+  core: {
+    recall: 'remembers it when asked',
+    apply: 'uses it correctly in a new situation',
+    explain: 'says why, in their own words',
+    predict: 'anticipates what will happen before seeing it'
+  },
+  language: {
+    read: 'understands it in written context',
+    listen: 'understands it when heard',
+    speak: 'says it aloud, correctly',
+    write: 'produces it in writing'
+  },
+  math: {
+    compute: 'carries out the calculation correctly'
+  }
+} as const
+export type EvidenceFacet = { [P in keyof typeof FACET_PACKS]: keyof (typeof FACET_PACKS)[P] }[keyof typeof FACET_PACKS]
+export const EVIDENCE_FACETS = Object.values(FACET_PACKS).flatMap((pack) => Object.keys(pack)) as EvidenceFacet[]
+
+// "verify" in an English lesson is "en:verify"; ids with a namespace stay as written.
+export const TARGET_ID = /^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9/'-]*$/
+export const toTargetId = (target: string, language: string) => (target.includes(':') ? target : `${language}:${target.toLowerCase()}`)
 
 export interface ComponentEntry {
   description: string
@@ -53,15 +86,15 @@ export const CORE_COMPONENTS: Record<string, ComponentEntry> = {
     props: { required: ['prompt'], optional: ['title'] },
     options: { min: 2, max: 5, correct: 'one' },
     events: ['correct', 'wrong'],
-    facets: ['read', 'recall'],
+    facets: ['read', 'recall', 'apply'],
     example: '? lessonml:pick-evidence case-1\n  prompt: Which sentence can\'t be {verified|verify}?\n  - Revenue rose 18%.\n    hint: This comes from the filing.\n  * An analyst report calls it a clean beat.\n  on correct: evidence read verify'
   },
   'lessonml:cloze': {
-    description: 'The learner types the missing word into a line (a log, a rule, a formula). Typed recall is productive evidence.',
+    description: 'The learner types the missing word or value into a line (a log, a rule, a formula: "2/4 = ___/8"). Typed recall is productive evidence.',
     props: { required: ['line', 'answer'], optional: ['title'] },
     options: { min: 0, max: 4, correct: 'none' },
     events: ['correct', 'wrong'],
-    facets: ['write', 'recall'],
+    facets: ['write', 'recall', 'compute', 'apply'],
     example: '? lessonml:cloze rule-1\n  line: Ledger must ___ every source.\n  answer: verify\n  - disclose\n    hint: That means "make public".\n  on correct: evidence write verify'
   },
   'lessonml:choose-reply': {
@@ -69,7 +102,7 @@ export const CORE_COMPONENTS: Record<string, ComponentEntry> = {
     props: { required: ['prompt'], optional: [] },
     options: { min: 2, max: 4, correct: 'one' },
     events: ['correct', 'wrong'],
-    facets: ['read'],
+    facets: ['read', 'apply'],
     example: '? lessonml:choose-reply reply-1\n  prompt: Dana asks if you can ship tonight.\n  * Not until every source is {verified|verify}.\n  - Sure, it is probably fine.\n  on correct: set trust.dana += 1\n  on wrong: DANA (stern): "Probably isn\'t a plan."'
   },
   'lessonml:speak': {
@@ -79,6 +112,14 @@ export const CORE_COMPONENTS: Record<string, ComponentEntry> = {
     events: ['spoken', 'missed'],
     facets: ['speak'],
     example: '? lessonml:speak ask-ledger\n  prompt: Ask Ledger whether it made the report up.\n  target: verify\n  on spoken: evidence speak verify'
+  },
+  'lessonml:write': {
+    description: 'The learner writes a few sentences (a reply, an explanation of their reasoning). A reviewer supplied by the host app judges it; without one, the player checks the required words and length.',
+    props: { required: ['prompt'], optional: ['targets', 'min_words', 'model'] },
+    options: null,
+    events: ['correct', 'wrong'],
+    facets: ['write', 'explain', 'apply'],
+    example: '? lessonml:write why-equal\n  prompt: Explain why 2/4 and 1/2 are the same amount.\n  targets: numerator, denominator\n  min_words: 12\n  on correct: evidence explain math:fraction-equivalence'
   }
 }
 
@@ -112,6 +153,12 @@ export const describeWorld = (world: World) => {
     lines.push(`- @${world.namespace}:${key}: ${place.description}`)
     for (const [verb, args] of Object.entries(place.stage)) lines.push(`  ! ${verb} ${args.includes('*') ? '<free text>' : args.join(' | ')}`)
   }
+  if (world.glossary && Object.keys(world.glossary).length) {
+    lines.push('', '## Glossary (the sense each term has in this world)')
+    for (const [id, entry] of Object.entries(world.glossary)) lines.push(`- ${id}: ${entry.gloss}${entry.definition ? ` — ${entry.definition}` : ''}`)
+  }
+  lines.push('', '## Evidence facets (evidence <facet> <target>; a bare word means <language>:<word>)')
+  for (const [pack, facets] of Object.entries(FACET_PACKS)) lines.push(`- ${pack}: ${Object.entries(facets).map(([facet, meaning]) => `${facet} (${meaning})`).join(', ')}`)
   lines.push('', '## Components (start with "? <component> <id>")')
   for (const [id, component] of Object.entries(CORE_COMPONENTS)) {
     lines.push(`- ${id}: ${component.description} Events: ${component.events.join(', ')}. Evidence: ${component.facets.join(', ')}.`)

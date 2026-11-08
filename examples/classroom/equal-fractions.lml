@@ -1,0 +1,51 @@
+---
+lesson: academy:equal-fractions
+world: ./world.json
+language: en
+learner_language: zh
+state:
+  confidence: 0
+---
+// Math acceptance lesson: every format change must keep this compiling,
+// playing and rendering (test/acceptance.test.ts).
+
+# scene pizza @academy:classroom
+! camera wide
+! board 1/2  and  2/4
+> Ms. Lin draws two pizzas. One is cut into 2 slices, the other into 4.
+  zh: 林老师画了两张披萨：一张切成 2 块，另一张切成 4 块。
+
+! camera mentor
+LIN (smile): "You eat one slice of the first. Your friend eats two of the second. Who ate more?"
+  zh: 你吃了第一张的一块，朋友吃了第二张的两块。谁吃得多？
+
+! camera board
+? lessonml:pick-evidence who-ate-more
+  prompt: Who ate more pizza?
+  - You did: one big slice is more.
+    hint: 那一大块只是一半；两小块加起来也是一半。
+  - Your friend did: two slices beat one.
+    hint: 块数多不代表吃得多，要看每块有多大。
+  * Neither: 1/2 and 2/4 are {equivalent}.
+  on correct: evidence apply math:fraction-equivalence; set confidence += 1
+  on wrong: LIN (neutral): "Look at how big each slice is."
+
+! board 1/2 = 2/4 = ___/8
+? lessonml:cloze eighths
+  line: 1/2 = 2/4 = ___/8
+  answer: 4
+  - 2
+    hint: 2/8 只有 1/4 那么多。
+  on correct: evidence compute math:fraction-equivalence
+
+! camera mentor
+? lessonml:write why-equal
+  prompt: In one or two sentences, explain why 2/4 equals 1/2. Use the words {numerator} and {denominator}.
+  targets: numerator, denominator
+  min_words: 10
+  on correct: evidence explain math:fraction-equivalence
+  on wrong: LIN (neutral): "Almost. Use both words, and say what happens to each."
+
+if confidence > 0:
+  LIN (smile): "You saw it at once. Multiply the {numerator} and the {denominator} by the same number, and the amount never changes."
+    zh: 你一眼就看出来了。分子分母同时乘以同一个数，大小永远不变。
