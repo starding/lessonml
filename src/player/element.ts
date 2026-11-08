@@ -35,7 +35,7 @@ const TILT: Record<string, number> = { neutral: 0, smile: 1.5, stern: -2, surpri
 const CSS = `
 :host { display:block; position:relative; height:100%; min-height:420px; overflow:hidden; background:#05060d; color:#eef1ff;
   font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif; -webkit-user-select:none; user-select:none; touch-action:none; }
-svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
+svg { position:absolute; inset:0; width:100%; height:100%; display:block; transform:translateZ(0); }
 .vignette { position:absolute; inset:0; pointer-events:none; background:radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%); }
 .scan { position:absolute; left:0; right:0; height:140px; top:-140px; pointer-events:none; background:linear-gradient(transparent, rgba(95,227,255,.28), transparent); }
 .scan.run { animation:scan 1.3s ease-in-out; }
@@ -74,6 +74,8 @@ svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
 .end h2 { margin:0; font-size:34px; letter-spacing:.14em; }
 .end button { border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.06); color:#fff; border-radius:999px; padding:10px 22px; font-size:14px; cursor:pointer; }
 svg.still, svg.still * { transition:none !important; }
+/* A still scene also stops the set's looping CSS animations (twinkle, steam, pulse, waveform). */
+svg.calm * { animation:none !important; }
 .errors { position:absolute; inset:16px; overflow:auto; margin:0; white-space:pre-wrap; font:13px/1.6 ui-monospace,Menlo,monospace; color:#ffb4b4; }
 `
 
@@ -81,6 +83,19 @@ type Ui = typeof UI.en
 
 export class LmlSceneElement extends HTMLElement {
   static observedAttributes = ['src', 'world', 'style-pack']
+
+  // motion="full" | "still" | (default) auto. A still scene has no ambient
+  // animation: no weather, breathing, blinking or lip flaps, and lines appear
+  // whole. Auto is still on touch devices and with prefers-reduced-motion:
+  // some phone compositors skip repainting parts of the screen on alternate
+  // frames while anything animates, which reads as heavy flicker.
+  private get still() {
+    const motion = this.getAttribute('motion')
+    if (motion === 'still') return true
+    if (motion === 'full') return false
+    if (typeof matchMedia !== 'function') return false
+    return matchMedia('(pointer: coarse)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches
+  }
 
   // Judges lessonml:write answers; replace with the host app's (an LLM, a teacher queue).
   reviewer: Reviewer = defaultReviewer
@@ -263,6 +278,9 @@ export class LmlSceneElement extends HTMLElement {
       }
     })
     this.runtime.memo = {}
+    // Lay out ambient elements (rain) once, so a still scene shows them in place.
+    set.tick?.(this.runtime, 0, 0)
+    this.svg.classList.toggle('calm', this.still)
     this.engine.shot = this.engine.directed ? this.engine.shot : set.establishing
     this.resize()
     this.render()
@@ -551,6 +569,7 @@ export class LmlSceneElement extends HTMLElement {
       }
     }
     this.typing = { done }
+    if (this.still) { done(); return }
     this.typingTimer = window.setInterval(() => {
       for (let n = 0; n < 2 && index < chars.length; n++) chars[index++].classList.remove('h')
       if (index >= chars.length) done()
@@ -626,6 +645,7 @@ export class LmlSceneElement extends HTMLElement {
   private startLoops() {
     const blink = () => {
       if (!this.alive) return
+      if (this.still) { this.timers.push(window.setTimeout(blink, 3000)); return }
       const roots = Array.from(this.svg.querySelectorAll('[data-character]'))
       roots.forEach((root) => setEyes(root, false))
       this.timers.push(window.setTimeout(() => roots.forEach((root) => setEyes(root, true)), 110))
@@ -635,7 +655,7 @@ export class LmlSceneElement extends HTMLElement {
     let open = false
     const flap = () => {
       if (!this.alive) return
-      if (this.talking) {
+      if (this.talking && !this.still) {
         open = !open
         const key = this.talking
         this.characters(key).forEach((root) => setMouth(root, open ? 'talk' : (this.engine.expressions[key] || 'neutral')))
@@ -643,7 +663,6 @@ export class LmlSceneElement extends HTMLElement {
       this.timers.push(window.setTimeout(flap, 70 + Math.random() * 70))
     }
     flap()
-    const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
     let last = performance.now()
     const frame = (now: number) => {
       if (!this.alive) return
@@ -667,7 +686,7 @@ export class LmlSceneElement extends HTMLElement {
         const f = Number(layer.dataset.f)
         setTransform(layer, `translate(${(-e.pointer.sx * 26 * (f - 0.85)).toFixed(1)},${(-e.pointer.sy * 14 * (f - 0.85)).toFixed(1)})`)
       })
-      if (!reducedMotion) {
+      if (!this.still) {
         this.svg.querySelectorAll<SVGElement>('[data-character]').forEach((root, i) => {
           const key = root.dataset.character!
           const breath = Math.sin(t * 1.7 + i * 1.3)

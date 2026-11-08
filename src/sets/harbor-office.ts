@@ -197,7 +197,7 @@ function buildWorld(ctx: HarborContext) {
     <linearGradient id="nySky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcd7f0"/><stop offset="1" stop-color="#eef3f7"/></linearGradient>
     <linearGradient id="callFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></linearGradient>
     <radialGradient id="danaGlow" cx=".7" cy=".4" r=".9"><stop offset="0" stop-color="#3a6bd6" stop-opacity=".55"/><stop offset="1" stop-color="#3a6bd6" stop-opacity="0"/></radialGradient>
-    <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" id="glowStop" style="stop-color:#ffd2a8;transition:stop-color .8s" stop-opacity=".55"/><stop offset="1" style="stop-color:#ffd2a8" stop-opacity="0" id="glowStop2"/></radialGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" id="glowStop" style="stop-color:#ffd2a8" stop-opacity=".55"/><stop offset="1" style="stop-color:#ffd2a8" stop-opacity="0" id="glowStop2"/></radialGradient>
     <clipPath id="windowClip"><rect x="120" y="120" width="960" height="700"/></clipPath>
     <clipPath id="screenClip"><rect width="700" height="394" rx="4"/></clipPath>
   </defs>
