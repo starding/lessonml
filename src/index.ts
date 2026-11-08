@@ -1,0 +1,7 @@
+export * from './ir.js'
+export { parseScreenplay, extractWords } from './screenplay.js'
+export { compile, formatDiagnostics } from './validate.js'
+export { CORE_COMPONENTS, EVIDENCE_FACETS, describeWorld, type World, type CharacterEntry, type PlaceEntry, type ComponentEntry } from './catalog.js'
+export { renderCharacter, generateCharacter, EXPRESSIONS, type CharacterSpec, type Expression } from './rig/rig.js'
+export { STYLE_PACKS, type StylePack } from './rig/styles.js'
+export { setExpression, setEyes, setMouth } from './rig/controls.js'

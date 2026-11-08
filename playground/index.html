@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LessonML · Style packs</title>
+<style>
+  :root { --bg:#0b0d1a; --panel:#141729; --ink:#eef1ff; --muted:#9aa3c7; --line:rgba(255,255,255,.1); --heat:#ff7a3d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif; }
+  header { max-width:1240px; margin:0 auto; padding:28px 16px 8px; }
+  h1 { margin:0; font-size:22px; letter-spacing:.02em; }
+  header p { margin:6px 0 0; color:var(--muted); font-size:14px; line-height:1.6; max-width:760px; }
+  .controls { position:sticky; top:0; z-index:2; background:rgba(11,13,26,.9); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
+  .controls div { max-width:1240px; margin:0 auto; padding:12px 16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button { border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:999px; padding:8px 14px; font-size:13px; cursor:pointer; }
+  button.on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+  .sep { width:1px; height:20px; background:var(--line); margin:0 4px; }
+  #seed { color:var(--muted); font-size:12px; font-family:ui-monospace,Menlo,monospace; }
+  main { max-width:1240px; margin:0 auto; padding:16px; display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); }
+  article { background:var(--panel); border:1px solid var(--line); border-radius:18px; overflow:hidden; }
+  article svg { display:block; width:100%; height:auto; }
+  article footer { padding:12px 16px 16px; }
+  article h2 { margin:0; font-size:16px; } article h2 span { color:var(--muted); font-weight:500; font-size:13px; margin-left:6px; }
+  article p { margin:6px 0 0; color:var(--muted); font-size:13px; line-height:1.55; }
+  .note { max-width:1240px; margin:0 auto; padding:0 16px 40px; color:var(--muted); font-size:13px; line-height:1.7; }
+  code { font-family:ui-monospace,Menlo,monospace; color:#c9d1ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LessonML · 画风资源包对比</h1>
+  <p>同一组角色参数，套三种画风包。剧本一行不改，换包即换画风。第三个位置可以随机“捏”一个新角色：只用几项参数，每种画风下都自动保持一致。</p>
+</header>
+<div class="controls"><div id="controls"></div></div>
+<main id="grid"></main>
+<p class="note">角色由 <code>src/rig/rig.ts</code> 的参数化骨架绘制，画风规则在 <code>src/rig/styles.ts</code>。表情、眨眼、口型由运行时按部件契约切换（<code>data-part</code> / <code>data-v</code>），与画风无关。</p>
+<script type="module">
+import { STYLE_PACKS, renderCharacter, generateCharacter, setExpression, setEyes, setMouth } from '../dist/src/index.js'
+
+const world = await fetch('../examples/harbor/world.json').then((r) => r.json())
+const base = ['priya', 'dana', 'marcus'].map((key) => world.characters[key].rig)
+let cast = [...base]
+let expression = 'neutral'
+let talking = false
+let seed = null
+
+const EXPRESSION_LABEL = { neutral: '平静', smile: '微笑', stern: '严肃', surprised: '惊讶', worried: '担忧' }
+
+// A small backdrop per style, drawn with the same rules as the characters.
+const backdrop = (style) => {
+  const line = style.outline ? `stroke="${style.outline.color === 'auto' ? '#0b0a18' : style.outline.color}" stroke-width="${style.outline.width}"` : ''
+  const sky = style.gradients
+    ? '<linearGradient id="sky-' + style.id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1030"/><stop offset="1" stop-color="#3d2c52"/></linearGradient>'
+    : ''
+  const skyFill = style.gradients ? `url(#sky-${style.id})` : style.id === 'ligne-claire' ? '#2b3a6b' : '#27304f'
+  const wall = style.id === 'ligne-claire' ? '#e9d8b4' : style.id === 'flat-modern' ? '#2a2436' : '#14121f'
+  const towers = [[60, 170], [120, 120], [175, 200], [240, 90], [300, 150], [520, 130], [580, 70], [640, 180], [700, 110], [760, 160], [820, 95]]
+    .map(([x, h], i) => `<rect x="${x}" y="${330 - h}" width="${48 + (i % 3) * 8}" height="${h}" fill="${style.id === 'ligne-claire' ? '#3c4f86' : '#151a3c'}" ${line}/>` +
+      Array.from({ length: 8 }, (_, k) => `<rect x="${x + 8 + (k % 3) * 13}" y="${340 - h + 10 + Math.floor(k / 3) * 22}" width="6" height="8" fill="#ffd89a" opacity="${style.id === 'flat-modern' ? .7 : .9}"/>`).join('')).join('')
+  return `<defs>${sky}</defs>
+    <rect width="960" height="560" fill="${wall}"/>
+    <rect x="40" y="30" width="880" height="330" fill="${skyFill}" ${line}/>
+    ${style.id === 'anime-clean' ? '<ellipse cx="700" cy="330" rx="300" ry="70" fill="#ff8a5a" opacity=".18"/>' : ''}
+    ${towers}
+    <path d="M480 30 V360" stroke="${style.id === 'ligne-claire' ? '#1b1b1f' : '#05060b'}" stroke-width="10"/>
+    <rect x="40" y="30" width="880" height="330" fill="none" stroke="${style.id === 'ligne-claire' ? '#1b1b1f' : '#05060b'}" stroke-width="12"/>
+    <rect x="0" y="470" width="960" height="90" fill="${style.id === 'ligne-claire' ? '#b5764a' : style.id === 'flat-modern' ? '#3a2e3e' : '#1d1722'}" ${line}/>`
+}
+
+const render = () => {
+  const grid = document.getElementById('grid')
+  grid.innerHTML = Object.values(STYLE_PACKS).map((style) => `
+    <article>
+      <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" data-style="${style.id}">
+        ${backdrop(style)}
+        ${cast.map((spec, i) => `<g transform="translate(${30 + i * 300},${168}) scale(.78)" class="slot">${renderCharacter(spec, style, 'pg' + i)}</g>`).join('')}
+      </svg>
+      <footer><h2>${style.nameZh}<span>${style.name}</span></h2><p>${style.description}</p></footer>
+    </article>`).join('')
+  document.querySelectorAll('[data-character]').forEach((root) => setExpression(root, expression))
+}
+
+const controls = () => {
+  const el = document.getElementById('controls')
+  el.innerHTML = Object.entries(EXPRESSION_LABEL).map(([key, label]) => `<button data-expr="${key}" class="${key === expression ? 'on' : ''}">${label}</button>`).join('') +
+    `<span class="sep"></span><button id="talk" class="${talking ? 'on' : ''}">${talking ? '停止说话' : '说话'}</button>` +
+    `<button id="roll">随机捏一个角色</button><button id="reset">恢复原角色</button><span id="seed">${seed === null ? '' : 'seed ' + seed}</span>`
+  el.querySelectorAll('[data-expr]').forEach((button) => button.onclick = () => { expression = button.dataset.expr; controls(); document.querySelectorAll('[data-character]').forEach((root) => setExpression(root, expression)) })
+  el.querySelector('#talk').onclick = () => { talking = !talking; controls() }
+  el.querySelector('#roll').onclick = () => { seed = Math.floor(Math.random() * 100000); cast = [base[0], base[1], generateCharacter(seed, 'gen')]; render(); controls() }
+  el.querySelector('#reset').onclick = () => { seed = null; cast = [...base]; render(); controls() }
+}
+
+// Breathing, blinking and talking, through the part contract only.
+let mouthOpen = false
+setInterval(() => {
+  if (!talking) return
+  mouthOpen = !mouthOpen
+  document.querySelectorAll('[data-character]').forEach((root) => setMouth(root, mouthOpen ? 'talk' : expression))
+}, 110)
+const blink = () => {
+  const roots = document.querySelectorAll('[data-character]')
+  roots.forEach((root) => setEyes(root, false))
+  setTimeout(() => roots.forEach((root) => setEyes(root, true)), 120)
+  setTimeout(blink, 2200 + Math.random() * 2600)
+}
+setTimeout(blink, 1200)
+const breathe = (t) => {
+  document.querySelectorAll('[data-character]').forEach((root, i) => {
+    const b = Math.sin(t / 1000 * 1.7 + i)
+    root.querySelector('.bd')?.setAttribute('transform', `translate(0,${(b * 1.8).toFixed(2)})`)
+    root.querySelector('.nk')?.setAttribute('transform', `translate(0,${(b * 1.5).toFixed(2)})`)
+    const head = `translate(0,${(b * 1.3).toFixed(2)}) rotate(${(Math.sin(t / 1000 * .6 + i) * .8).toFixed(2)} 200 300)`
+    root.querySelector('.hb')?.setAttribute('transform', head)
+    root.querySelector('.hf')?.setAttribute('transform', head)
+  })
+  requestAnimationFrame(breathe)
+}
+requestAnimationFrame(breathe)
+
+controls()
+render()
+</script>
+</body>
+</html>

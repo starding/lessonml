@@ -1,0 +1,54 @@
+---
+lesson: harbor:compliance-call
+world: ./world.json
+language: en
+learner_language: zh
+state:
+  trust.priya: 0
+---
+
+# scene call @harbor:office-night
+! camera priya
+! effect typing
+PRIYA (neutral): "I'm Priya, compliance. Walk me through it. Where did that answer come from?"
+  zh: 我是 Priya，合规部的。给我从头讲一遍：那条回答是从哪来的？
+
+! screen share
+! camera share
+> You share your screen. The risk {disclosure} that should sit under every answer is missing.
+  zh: 你共享屏幕。本该出现在每条回答下方的风险披露不见了。
+
+! screen call
+! camera priya
+PRIYA (stern): "Without that {disclosure}, the firm's {liability} is very different."
+  zh: 没有那段披露，公司要承担的法律责任就完全不一样了。
+
+! camera dana
+DANA (stern): "Someone has to be {accountable} for what this thing says."
+  zh: 总得有人为这东西说的话负责。
+
+! effect mail
+! effect shake
+> A regulator saw the posts about Ledger. Your product is now under {scrutiny}.
+  zh: 监管机构看到了关于 Ledger 的帖子。你的产品已经被严格审查了。
+
+! screen logs
+! camera logs
+? lessonml:pick-evidence case-1
+  prompt: Tap the sentence Ledger could not {verify}.
+  - Revenue rose 18% from a year ago, above expectations.
+    hint: 这句的数据来自财报原文，可以核实。
+  * An analyst report from Northfield Research calls it "a clean beat."
+  - The company also lowered its outlook for next year.
+    hint: 这句是真的，而且恰恰是 Ledger 当晚漏掉的那句。
+  on correct: evidence read verify; set trust.priya += 1
+  on wrong: PRIYA (stern): "Look again."
+
+if trust.priya > 0:
+  ! camera priya
+  PRIYA (smile): "Good. You check before you speak. So should Ledger."
+    zh: 很好。你先核实再开口，Ledger 也该这样。
+
+! effect scan
+LEDGER: "Yes. I filled a gap with something that sounded right. Do you want me to sound honest instead?"
+  zh: 是的。我用一段听起来合理的内容填了空白。你想让我改成诚实吗？
