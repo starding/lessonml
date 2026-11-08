@@ -41,6 +41,10 @@ export interface SetDefinition {
   // Character slots the set draws, e.g. ["call", "tile"].
   slots: string[]
   shots: Record<string, Rect>
+  // Framings for tall (phone) screens, for shots that only read well wide.
+  // A room-wide establishing shot shrinks to a band on a phone; its portrait
+  // version keeps the subject and shows more above and below instead.
+  portraitShots?: Partial<Record<string, Rect>>
   // The first shot, before the lesson directs the camera; and the shot when it never does.
   establishing: string
   defaultShot: string

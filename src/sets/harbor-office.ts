@@ -332,6 +332,12 @@ export const HARBOR_OFFICE_SET: SetDefinition = {
   id: 'harbor-office',
   slots: ['call', 'tile'],
   shots: HARBOR_SHOTS,
+  // On a phone: the monitor fills the width; window and desk fill the height.
+  portraitShots: {
+    wide: { x: 262, y: 160, w: 676, h: 980 },
+    push: { x: 262, y: 360, w: 676, h: 760 },
+    screen: { x: 262, y: 440, w: 676, h: 560 }
+  },
   establishing: 'wide',
   defaultShot: 'screen',
   build: (ctx) => buildHarborOfficeSvg({ style: ctx.style, cast: { call: ctx.cast('call'), tile: ctx.cast('tile') } }),

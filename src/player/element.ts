@@ -293,10 +293,11 @@ export class LmlSceneElement extends HTMLElement {
     const e = this.engine
     const shots = this.set?.shots
     if (!shots) return
-    const rect = shots[e.shot] || shots[this.set!.defaultShot]
     const top = 12
     const availableWidth = e.size.w - 16
     const availableHeight = Math.max(140, e.size.h - top - e.bottomInset)
+    const portrait = availableWidth / availableHeight < 0.8
+    const rect = (portrait ? this.set!.portraitShots?.[e.shot] : undefined) || shots[e.shot] || shots[this.set!.defaultShot]
     const s = Math.min(availableWidth / rect.w, availableHeight / rect.h)
     Object.assign(e.camera, { ts: s, tx: e.size.w / 2 - s * (rect.x + rect.w / 2), ty: top + availableHeight / 2 - s * (rect.y + rect.h / 2) })
     if (snap) Object.assign(e.camera, { s: e.camera.ts, x: e.camera.tx, y: e.camera.ty })

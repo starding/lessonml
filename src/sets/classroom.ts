@@ -24,6 +24,9 @@ export const CLASSROOM_SET: SetDefinition = {
   id: 'classroom',
   slots: ['mentor'],
   shots: CLASSROOM_SHOTS,
+  portraitShots: {
+    wide: { x: 60, y: 120, w: 720, h: 1000 }
+  },
   establishing: 'wide',
   defaultShot: 'wide',
   build(ctx) {
