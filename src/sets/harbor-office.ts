@@ -50,7 +50,7 @@ function cityTowers(rnd: () => number, x0: number, x1: number, base: number, min
   return out;
 }
 function pagoda(cx: number, base: number) {
-  let out = `<ellipse cx="${cx}" cy="${base-60}" rx="90" ry="80" fill="#ffb35a" opacity=".22" filter="url(#blur18)"/>`;
+  let out = `<ellipse cx="${cx}" cy="${base-60}" rx="110" ry="100" fill="url(#softGlow)" opacity=".5"/>`;
   let y = base, w = 46;
   for (let i = 0; i < 5; i++) {
     const h = 15 - i;
@@ -185,8 +185,8 @@ function buildWorld(ctx: HarborContext) {
     return `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${r.toFixed(1)}" fill="rgba(190,210,255,.10)" stroke="rgba(220,235,255,.25)" stroke-width=".8"/><circle cx="${(x-r*.3).toFixed(1)}" cy="${(y-r*.3).toFixed(1)}" r="${(r*.3).toFixed(1)}" fill="#fff" opacity=".5"/>`; }).join('');
   return `
   <defs>
-    <filter id="blur18" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
-    <filter id="blur6" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    <radialGradient id="softGlow"><stop offset="0" stop-color="#ffb35a" stop-opacity=".55"/><stop offset="1" stop-color="#ffb35a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="cityGlow"><stop offset="0" stop-color="#ff8a5a" stop-opacity=".18"/><stop offset="1" stop-color="#ff8a5a" stop-opacity="0"/></radialGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-opacity=".25"/></filter>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070a22"/><stop offset=".55" stop-color="#1a1d48"/><stop offset="1" stop-color="#3d2c52"/></linearGradient>
     <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1f45"/><stop offset="1" stop-color="#070915"/></linearGradient>
@@ -205,7 +205,7 @@ function buildWorld(ctx: HarborContext) {
     <rect x="-3000" y="-3000" width="7200" height="7400" fill="url(#wall)"/>
     <g clip-path="url(#windowClip)">
       <g class="px" data-f=".25"><rect x="60" y="60" width="1080" height="820" fill="url(#sky)"/>
-        <ellipse cx="760" cy="640" rx="420" ry="120" fill="#ff8a5a" opacity=".12" filter="url(#blur18)"/></g>
+        <ellipse cx="760" cy="640" rx="460" ry="150" fill="url(#cityGlow)"/></g>
       <g class="px" data-f=".4">
         <path d="M60 640 C180 560 300 590 380 560 C460 532 540 600 640 620 L640 660 L60 660 Z" fill="#12153a"/>
         ${pagoda(380, 566)}
@@ -248,8 +248,8 @@ function buildWorld(ctx: HarborContext) {
       <path class="steam" style="animation-delay:1.4s" d="M8 -8 C0 -24 18 -32 10 -50" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".4"/>
     </g>
     <g class="px" data-f="1.35" opacity=".9">
-      <path d="M-120 1400 C-60 1200 40 1120 120 1080 C80 1180 40 1260 30 1400 Z" fill="#05060a" filter="url(#blur6)"/>
-      <path d="M-60 1400 C0 1260 100 1200 190 1180 C130 1250 90 1320 80 1400 Z" fill="#070810" filter="url(#blur6)"/>
+      <path d="M-120 1400 C-60 1200 40 1120 120 1080 C80 1180 40 1260 30 1400 Z" fill="#05060a" opacity=".85"/>
+      <path d="M-60 1400 C0 1260 100 1200 190 1180 C130 1250 90 1320 80 1400 Z" fill="#070810" opacity=".85"/>
     </g>
   </g>`;
 }

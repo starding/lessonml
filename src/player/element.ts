@@ -40,9 +40,9 @@ svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
 .scan { position:absolute; left:0; right:0; height:140px; top:-140px; pointer-events:none; background:linear-gradient(transparent, rgba(95,227,255,.28), transparent); }
 .scan.run { animation:scan 1.3s ease-in-out; }
 @keyframes scan { to { top:110%; } }
-.bottom { position:absolute; left:12px; right:12px; bottom:10px; max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:10px; }
-.box { position:relative; border-radius:20px; padding:20px 18px 12px; background:rgba(9,11,26,.8); border:1px solid rgba(255,255,255,.12);
-  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); box-shadow:0 18px 50px rgba(0,0,0,.45); }
+.bottom { position:absolute; left:12px; right:12px; bottom:var(--lml-bottom-gap, 10px); max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:10px; }
+.box { position:relative; border-radius:20px; padding:20px 18px 12px; background:rgba(9,11,26,.92); border:1px solid rgba(255,255,255,.12);
+  box-shadow:0 18px 50px rgba(0,0,0,.45); }
 .box.system { border-color:rgba(95,227,255,.55); }
 .tag { position:absolute; top:-12px; left:16px; padding:4px 12px; border-radius:999px; font-size:12px; font-weight:800; letter-spacing:.08em; background:#2a2f55; color:#fff; }
 .tag:empty { display:none; }
@@ -643,6 +643,7 @@ export class LmlSceneElement extends HTMLElement {
       this.timers.push(window.setTimeout(flap, 70 + Math.random() * 70))
     }
     flap()
+    const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
     let last = performance.now()
     const frame = (now: number) => {
       if (!this.alive) return
@@ -655,31 +656,40 @@ export class LmlSceneElement extends HTMLElement {
       c.s += (c.ts - c.s) * a; c.x += (c.tx - c.x) * a; c.y += (c.ty - c.y) * a
       e.pointer.sx += (e.pointer.x - e.pointer.sx) * 0.06
       e.pointer.sy += (e.pointer.y - e.pointer.sy) * 0.06
-      e.shake *= Math.pow(0.02, dt)
-      const drift = e.still ? 0 : 1
-      const hx = drift * (Math.sin(t * 0.37) * 3 + Math.sin(t * 0.91) * 1.2) + (Math.random() - 0.5) * e.shake
-      const hy = drift * Math.cos(t * 0.29) * 2.4 + (Math.random() - 0.5) * e.shake
-      this.q('[data-camera]')?.setAttribute('transform', `translate(${(c.x + hx).toFixed(2)},${(c.y + hy).toFixed(2)}) scale(${c.s.toFixed(4)})`)
+      e.shake = e.shake < 0.05 ? 0 : e.shake * Math.pow(0.02, dt)
+      // The camera is still unless it is moving or shaking: re-transforming the
+      // whole scene every frame makes thin lines and text shimmer, and on
+      // phones it re-rasterizes everything (seen as flicker).
+      const hx = e.shake ? (Math.random() - 0.5) * e.shake : 0
+      const hy = e.shake ? (Math.random() - 0.5) * e.shake : 0
+      setTransform(this.q('[data-camera]'), `translate(${(c.x + hx).toFixed(1)},${(c.y + hy).toFixed(1)}) scale(${c.s.toFixed(4)})`)
       this.svg.querySelectorAll<SVGElement>('.px').forEach((layer) => {
         const f = Number(layer.dataset.f)
-        layer.setAttribute('transform', `translate(${(-e.pointer.sx * 26 * (f - 0.85)).toFixed(2)},${(-e.pointer.sy * 14 * (f - 0.85)).toFixed(2)})`)
+        setTransform(layer, `translate(${(-e.pointer.sx * 26 * (f - 0.85)).toFixed(1)},${(-e.pointer.sy * 14 * (f - 0.85)).toFixed(1)})`)
       })
-      this.svg.querySelectorAll<SVGElement>('[data-character]').forEach((root, i) => {
-        const key = root.dataset.character!
-        const breath = Math.sin(t * 1.7 + i * 1.3)
-        const expression = e.expressions[key] || 'neutral'
-        const head = `translate(0,${(breath * 1.3 + (expression === 'surprised' ? -4 : 0)).toFixed(2)}) rotate(${((TILT[expression] || 0) + Math.sin(t * 0.6 + i) * 0.8).toFixed(2)} 200 300)`
-        root.querySelector('.bd')?.setAttribute('transform', `translate(0,${(breath * 1.8).toFixed(2)})`)
-        root.querySelector('.nk')?.setAttribute('transform', `translate(0,${(breath * 1.5).toFixed(2)})`)
-        root.querySelector('.hb')?.setAttribute('transform', head)
-        root.querySelector('.hf')?.setAttribute('transform', head)
-        root.querySelectorAll<SVGElement>('.lock').forEach((lock, n) => lock.setAttribute('transform', `rotate(${(Math.sin(t * 1.3 + n + i) * 1.4).toFixed(2)} ${lock.dataset.pivot})`))
-      })
-      this.set?.tick?.(this.runtime, dt, t)
+      if (!reducedMotion) {
+        this.svg.querySelectorAll<SVGElement>('[data-character]').forEach((root, i) => {
+          const key = root.dataset.character!
+          const breath = Math.sin(t * 1.7 + i * 1.3)
+          const expression = e.expressions[key] || 'neutral'
+          const head = `translate(0,${(breath * 1.3 + (expression === 'surprised' ? -4 : 0)).toFixed(1)}) rotate(${((TILT[expression] || 0) + Math.sin(t * 0.6 + i) * 0.8).toFixed(1)} 200 300)`
+          setTransform(root.querySelector('.bd'), `translate(0,${(breath * 1.8).toFixed(1)})`)
+          setTransform(root.querySelector('.nk'), `translate(0,${(breath * 1.5).toFixed(1)})`)
+          setTransform(root.querySelector('.hb'), head)
+          setTransform(root.querySelector('.hf'), head)
+          root.querySelectorAll<SVGElement>('.lock').forEach((lock, n) => setTransform(lock, `rotate(${(Math.sin(t * 1.3 + n + i) * 1.4).toFixed(1)} ${lock.dataset.pivot})`))
+        })
+        this.set?.tick?.(this.runtime, dt, t)
+      }
       this.frameId = requestAnimationFrame(frame)
     }
     this.frameId = requestAnimationFrame(frame)
   }
+}
+
+// Only touch the DOM when a transform actually changes.
+const setTransform = (node: Element | null, value: string) => {
+  if (node && node.getAttribute('transform') !== value) node.setAttribute('transform', value)
 }
 
 interface SpeechLike {
