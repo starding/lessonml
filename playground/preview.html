@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>LessonML preview</title>
+<style>html,body{margin:0;height:100%;background:#05060d;overflow:hidden}lml-scene{position:fixed;inset:0;height:100%}</style>
+</head><body>
+<lml-scene id="scene"></lml-scene>
+<script type="module">
+import '../dist/src/player/element.js'
+// Driven by the MCP render_preview tool through window.lmlPreview.
+window.lmlPreview = async ({ source, world, step, stylePack }) => {
+  const scene = document.getElementById('scene')
+  scene.setAttribute('style-pack', stylePack)
+  scene.load(source, world)
+  scene.seek(step)
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  scene.settle()
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  return scene.describeFrame()
+}
+window.lmlReady = true
+</script>
+</body></html>

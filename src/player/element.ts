@@ -17,8 +17,8 @@ import { LessonSession, type Frame } from './session.js'
 import { buildHarborOfficeSvg, HARBOR_SHOTS, logOptionsMarkup, type HarborContext } from '../sets/harbor-office.js'
 
 const UI = {
-  en: { next: 'Swipe up to continue ↑', blocked: 'Solve it to continue', solveHere: 'Tap the answer on the screen', end: 'End of lesson', replay: 'Play again', check: 'Check', say: 'Say it', listening: 'Listening…', typeInstead: 'Type what you would say', tapForTranslation: 'Tap for translation', move: 'Your move' },
-  zh: { next: '上滑继续 ↑', blocked: '完成这一关后上滑继续', solveHere: '在屏幕上点出答案', end: '本课完', replay: '再看一遍', check: '确定', say: '开口说', listening: '正在听…', typeInstead: '也可以打出你要说的话', tapForTranslation: '轻触对白看中文', move: '轮到你了' }
+  en: { next: 'Swipe up to continue ↑', blocked: 'Solve it to continue', solveHere: 'Tap the answer on the screen', end: 'End of lesson', replay: 'Play again', check: 'Check', say: 'Say it', listening: 'Listening…', typeInstead: 'Type what you would say', tapForTranslation: 'Tap for translation', move: 'Your move', fill: 'Type the missing word.' },
+  zh: { next: '上滑继续 ↑', blocked: '完成这一关后上滑继续', solveHere: '在屏幕上点出答案', end: '本课完', replay: '再看一遍', check: '确定', say: '开口说', listening: '正在听…', typeInstead: '也可以打出你要说的话', tapForTranslation: '轻触对白看中文', move: '轮到你了', fill: '把缺的那个词打进去。' }
 }
 
 const GLOW: Record<string, string> = { call: '#ffd2a8', share: '#e6eeff', logs: '#5fe3ff', search: '#e6eeff' }
@@ -60,6 +60,7 @@ svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
 .end { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; background:rgba(5,6,13,.6); }
 .end h2 { margin:0; font-size:34px; letter-spacing:.14em; }
 .end button { border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.06); color:#fff; border-radius:999px; padding:10px 22px; font-size:14px; cursor:pointer; }
+svg.still, svg.still * { transition:none !important; }
 .errors { position:absolute; inset:16px; overflow:auto; margin:0; white-space:pre-wrap; font:13px/1.6 ui-monospace,Menlo,monospace; color:#ffb4b4; }
 `
 
@@ -85,7 +86,7 @@ export class LmlSceneElement extends HTMLElement {
     size: { w: 1, h: 1 }, bottomInset: 220,
     camera: { s: 1, x: 0, y: 0, ts: 1, tx: 0, ty: 0, k: 0.6 },
     shot: 'wide', directed: false, snapped: false,
-    pointer: { x: 0, y: 0, sx: 0, sy: 0 }, shake: 0,
+    pointer: { x: 0, y: 0, sx: 0, sy: 0 }, shake: 0, still: false,
     expressions: {} as Record<string, string>
   }
 
@@ -138,6 +139,48 @@ export class LmlSceneElement extends HTMLElement {
     this.engine.snapped = false
     this.buildSet()
     this.render()
+  }
+
+  // Preview hooks (the MCP render_preview tool): move ahead, then freeze
+  // motion so a screenshot shows exactly what a learner would settle on.
+  seek(steps: number) {
+    const session = this.session
+    if (!session) return
+    for (let i = 0; i < steps; i++) {
+      // A preview walks through interactions with the correct answer.
+      const frame = session.frame
+      if (frame.kind === 'interaction' && !frame.solved) {
+        if (frame.step.component === 'lessonml:cloze') session.type(frame.step.props.answer || '')
+        else if (frame.step.component === 'lessonml:speak') session.spoke(true)
+        else session.choose(Math.max(0, frame.step.options.findIndex((option) => option.correct)))
+      }
+      if (!session.next()) break
+    }
+    this.render()
+  }
+
+  settle() {
+    this.typing?.done()
+    const e = this.engine
+    e.still = true
+    e.shake = 0
+    this.svg.classList.add('still')
+    Object.assign(e.camera, { s: e.camera.ts, x: e.camera.tx, y: e.camera.ty })
+    if (this.shownSearch) {
+      const text = this.q('#hs-searchText'), result = this.q('#hs-searchResult')
+      if (text) text.textContent = this.shownSearch
+      if (result) result.style.opacity = '1'
+    }
+  }
+
+  // What is on screen, in words (for tools that cannot see).
+  describeFrame() {
+    const frame = this.session?.frame
+    if (!frame) return null
+    const base = { kind: frame.kind, camera: frame.stage.camera, screen: frame.stage.screen, effects: frame.stage.effects, expressions: frame.stage.expressions }
+    if (frame.kind === 'line') return { ...base, speaker: frame.step.speaker, text: frame.step.text }
+    if (frame.kind === 'interaction') return { ...base, component: frame.step.component, id: frame.step.id, prompt: frame.step.props.prompt, solved: frame.solved }
+    return base
   }
 
   private async loadFromAttributes() {
@@ -314,7 +357,8 @@ export class LmlSceneElement extends HTMLElement {
       line = frame.feedback.line || { kind: 'line', line: 0, speaker: null, text: '…', words: [] }
       translation = frame.feedback.hint || line.translation || ''
     } else {
-      line = { kind: 'line', line: frame.step.line, speaker: null, text: frame.step.props.prompt || '', words: frame.step.words }
+      const fallback = frame.step.component === 'lessonml:cloze' ? ui.fill : ''
+      line = { kind: 'line', line: frame.step.line, speaker: null, text: frame.step.props.prompt || fallback, words: frame.step.props.prompt ? frame.step.words : [] }
       tag = frame.step.props.title || ui.move
     }
     if (line.speaker && this.world) {
@@ -534,8 +578,9 @@ export class LmlSceneElement extends HTMLElement {
       e.pointer.sx += (e.pointer.x - e.pointer.sx) * 0.06
       e.pointer.sy += (e.pointer.y - e.pointer.sy) * 0.06
       e.shake *= Math.pow(0.02, dt)
-      const hx = Math.sin(t * 0.37) * 3 + Math.sin(t * 0.91) * 1.2 + (Math.random() - 0.5) * e.shake
-      const hy = Math.cos(t * 0.29) * 2.4 + (Math.random() - 0.5) * e.shake
+      const drift = e.still ? 0 : 1
+      const hx = drift * (Math.sin(t * 0.37) * 3 + Math.sin(t * 0.91) * 1.2) + (Math.random() - 0.5) * e.shake
+      const hy = drift * Math.cos(t * 0.29) * 2.4 + (Math.random() - 0.5) * e.shake
       this.q('#hs-cam')?.setAttribute('transform', `translate(${(c.x + hx).toFixed(2)},${(c.y + hy).toFixed(2)}) scale(${c.s.toFixed(4)})`)
       this.svg.querySelectorAll<SVGElement>('.px').forEach((layer) => {
         const f = Number(layer.dataset.f)

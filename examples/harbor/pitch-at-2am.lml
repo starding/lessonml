@@ -1,0 +1,50 @@
+---
+lesson: harbor:pitch-at-2am
+world: ./world.json
+language: en
+learner_language: zh
+state:
+  trust.dana: 0
+---
+
+# scene pitch @harbor:office-night
+! camera wide
+> Hangzhou, 2 a.m. The CEO has fifteen minutes. You have one chance to {pitch} a fix before Ledger is shut down.
+  zh: 杭州凌晨两点。CEO 只有十五分钟。在 Ledger 被关停之前，你只有一次提出补救方案的机会。
+
+! camera dana
+DANA (stern): "Kill it. We are a brokerage, not a research lab."
+  zh: 关了它。我们是券商，不是研究实验室。
+> Dana is {blunt}, as always. Nobody else speaks. You can feel a {consensus} forming without you.
+  zh: Dana 一如既往地直接。没人接话。你能感觉到大家在没有你的情况下形成共识。
+
+? lessonml:choose-reply reply-dana
+  prompt: Dana is waiting. What do you say?
+  * "You're right to be {skeptical}. Give me one rule and one week, then judge."
+  - "Please, it is not that bad."
+    hint: 恳求没有给出任何理由，Dana 不会被说服。
+  - "Ledger is inevitable. Every firm will have one."
+    hint: "不可避免"不是理由，反而回避了她的担心。
+  on correct: evidence read skeptical; set trust.dana += 1; DANA (surprised): "One week. Show me the rule."
+  on wrong: DANA (stern): "That's not a plan."
+
+! screen logs
+! camera logs
+? lessonml:cloze rule-2
+  line: RULE_02: Ledger must say when it is not sure, and never ___ a source.
+  answer: invent
+  - verify
+    hint: verify 是"核实"，规则禁止的是"编造"来源。
+  on correct: evidence write invent
+
+! screen call
+if trust.dana > 0:
+  ! camera dana
+  DANA (smile): "Fine. You {hesitate} less than you used to."
+    zh: 行吧。你比以前少犹豫多了。
+
+! camera priya
+? lessonml:speak say-rule
+  prompt: Read the new rule to the CEO, out loud.
+  target: invent
+  on spoken: evidence speak invent

@@ -38,7 +38,8 @@ This is an early draft. It already includes:
 - four core interaction components;
 - a parametric character rig;
 - three style packs: anime clean line, contemporary flat and ligne claire;
-- a reference interpreter and the `<lml-scene>` web component (v0.2).
+- a reference interpreter and the `<lml-scene>` web component (v0.2);
+- an MCP server for the model authoring loop (v0.3).
 
 The full design is in [SPEC.md](SPEC.md).
 
@@ -52,6 +53,24 @@ The project started inside HeatWords, an English-learning app for professionals.
 ```
 
 The element listens to swipes, the wheel and the keyboard. It reports learning evidence and story state as DOM events (`lml-evidence`, `lml-state`), so the host app owns the learner's record.
+
+## Let a model write lessons (MCP)
+
+The MCP server gives any MCP client (Claude Code, Claude Desktop, others) the whole authoring loop:
+- the guide;
+- the world catalog;
+- compile, with repairable diagnostics;
+- simulate, a played-through transcript;
+- `render_preview`, screenshots from headless Chrome.
+
+```bash
+npm install && npm run build
+claude mcp add lessonml -- node /absolute/path/to/lessonml/dist/src/mcp/server.js
+```
+
+Then ask: *"Using lessonml, write a short scene in the harbor world where Dana tests whether I can push back politely."* The model reads the world, writes the screenplay, compiles and fixes it, plays it through, and looks at the screenshots.
+
+`examples/harbor/pitch-at-2am.lml` was written this way. Its first draft compiled cleanly, but `simulate` showed two characters "on camera" while the monitor was showing logs, and a choice that produced no evidence. The previews also caught an empty prompt in the player.
 
 ## Try it
 

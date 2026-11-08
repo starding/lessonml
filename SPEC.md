@@ -201,12 +201,28 @@ The element emits these events:
 - `lml-end`
 - `lml-error` (the compiler diagnostics)
 
-## 9. Roadmap
+## 9. MCP server (v0.3)
+
+`src/mcp/server.ts` exposes the authoring loop to any MCP client over stdio:
+
+| Tool | What it gives the model |
+|---|---|
+| `lessonml_guide` | Syntax, components and craft rules. Read it first. |
+| `lessonml_describe_world` | The world catalog, with every id spelled as it must be written, or a list of the available worlds |
+| `lessonml_compile` | `ok`, or diagnostics to repair |
+| `lessonml_simulate` | A transcript played without drawing: frames, attempts, hints, state, evidence, branches taken or skipped, and warnings. `answers` tries other paths. |
+| `lessonml_render_preview` | PNG screenshots of chosen frames from headless Chrome, each with a description of the frame |
+
+The loop is: guide → describe → write → compile until it passes → simulate → preview, then fix.
+
+Simulate is cheap and catches structural problems. For example, it catches a character shot while the monitor shows something else, or an interaction that produces no evidence. Previews catch visual problems: hidden text, empty panels, wrong framing.
+
+## 10. Roadmap
 
 | Version | Scope |
 |---|---|
 | v0.1 | Syntax, IR, compiler and diagnostics, core components, character rig, three style packs |
 | v0.2 | ✅ Interpreter (`LessonSession`) and `<lml-scene>` web component; place sets with character slots; camera and parallax |
-| v0.3 | MCP server with `describe_world`, `compile` and `render_preview` (a screenshot), so a model can write, check and see its work |
+| v0.3 | ✅ MCP server: guide, describe_world, compile, simulate, render_preview, so a model can write, check, play and see its work |
 | v0.4 | Improvisation slots: lines a runtime model may improvise within a character card, state and lesson goal |
 | v0.5 | Pack registry; the first non-language components (simulation sliders, charts) |

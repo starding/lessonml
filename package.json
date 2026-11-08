@@ -1,20 +1,35 @@
 {
   "name": "lessonml",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "A screenplay language for interactive, narrative lessons, designed to be written by language models.",
   "type": "module",
   "license": "Apache-2.0",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
-  "files": ["dist/src", "SPEC.md"],
+  "files": [
+    "dist/src",
+    "playground/preview.html",
+    "SPEC.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/*.test.js",
     "check": "npm run build && node dist/scripts/check.js",
-    "serve": "npm run build && node scripts/serve.mjs"
+    "serve": "npm run build && node scripts/serve.mjs",
+    "mcp": "npm run build && node dist/src/mcp/server.js"
   },
   "devDependencies": {
-    "typescript": "^5.6.3",
-    "@types/node": "^22.10.0"
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "optionalDependencies": {
+    "playwright-core": "^1.65.0"
+  },
+  "bin": {
+    "lessonml-mcp": "dist/src/mcp/server.js"
   }
 }
