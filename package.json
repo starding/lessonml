@@ -16,7 +16,8 @@
     "test": "npm run build && node --test dist/test/*.test.js",
     "check": "npm run build && node dist/scripts/check.js",
     "serve": "npm run build && node scripts/serve.mjs",
-    "mcp": "npm run build && node dist/src/mcp/server.js"
+    "mcp": "npm run build && node dist/src/mcp/server.js",
+    "prepare": "tsc -p tsconfig.json"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

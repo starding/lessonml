@@ -74,6 +74,19 @@ Then ask: *"Using lessonml, write a short scene in the harbor world where Dana t
 
 `examples/harbor/pitch-at-2am.lml` was written this way. Its first draft compiled cleanly, but `simulate` showed two characters "on camera" while the monitor was showing logs, and a choice that produced no evidence. The previews also caught an empty prompt in the player.
 
+## Install
+
+LessonML is not on npm yet. Install it from GitHub, pinned to a commit; npm builds it on install (`prepare`):
+
+```bash
+npm install github:starding/lessonml#<commit>
+```
+
+```js
+import { compile, LessonSession } from 'lessonml'   // compiler and interpreter (Node or browser)
+import 'lessonml/player'                            // registers <lml-scene> (browser only)
+```
+
 ## Try it
 
 ```bash
