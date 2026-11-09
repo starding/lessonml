@@ -394,7 +394,7 @@ The learner searches the picture and taps every spot in `targets`. A wrong tap i
 </script>
 ```
 
-- **Explore:** drag, pinch and double-tap to look around; tap a thing to open its card (word, gloss, and the line on this page that uses it).
+- **Explore:** drag, pinch and double-tap to look around; tap a thing to open its card (word, gloss, and the line on this page that uses it). Where spots overlap, the smallest one under the finger wins, so spot order does not matter.
 - **Tour:** lines play as subtitles while the camera frames their `look:` spots; linked words fly to the picture, glossed words show their gloss. A find pauses the tour until it is solved.
 - **Pages:** `next()`, `prev()`, `goto(i)`; at the end of a page the subtitle offers the next one, which starts with one tap so audio stays allowed on phones.
 - **Events:** `lml-word` `{word, target, source: 'spot' | 'text', page}`, `lml-evidence` `{facet, target, interaction}`, `lml-page` `{index, id}`, `lml-end`, `lml-error`.

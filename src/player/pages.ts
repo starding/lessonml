@@ -85,6 +85,8 @@ const inside = ([px, py]: Point, poly: Point[]) => {
   return hit
 }
 
+const polygonArea = (poly: Point[]) => Math.abs(poly.reduce((sum, [x, y], i) => { const [nx, ny] = poly[(i + 1) % poly.length]; return sum + x * ny - nx * y }, 0)) / 2
+
 // The lines and finds of a page in order (branches are flattened: pages have no state).
 const flatten = (steps: Step[]): (LineStep | InteractionStep)[] => steps.flatMap((step) =>
   step.kind === 'line' || step.kind === 'interaction' ? [step] : step.kind === 'branch' ? flatten(step.steps) : [])
@@ -365,13 +367,24 @@ export class LmlPagesElement extends HTMLElement {
     else if (this.pointers.size === 1) { const [q] = [...this.pointers.values()]; this.gesture = { kind: 'pan', sx: q.x, sy: q.y, d: 0, mx: 0, my: 0, cam: { ...this.cam }, t: 0, moved: true } }
   }
 
-  // Geometry in image pixels; topmost spot wins; a little slack for small things.
+  // Geometry in image pixels. When spots overlap (a wrench on a workbench, a
+  // cup in a hand), the smallest one under the finger wins: it is the most
+  // specific thing, whatever order the spots were written in. A little slack
+  // helps small things.
   private hitAt(x: number, y: number): Spot | null {
     const spots = this.page!.spots
     for (const r of [0, 10, 18]) {
       for (const [dx, dy] of r ? [[r, 0], [-r, 0], [0, r], [0, -r]] : [[0, 0]]) {
         const point: Point = [(x + dx - this.cam.x) / this.cam.s, (y + dy - this.cam.y) / this.cam.s]
-        for (let i = spots.length - 1; i >= 0; i--) if (spots[i].shapes.some((shape) => inside(point, shape))) return spots[i]
+        let best: Spot | null = null, bestArea = Infinity
+        for (const spot of spots) {
+          for (const shape of spot.shapes) {
+            if (!inside(point, shape)) continue
+            const area = polygonArea(shape)
+            if (area < bestArea) { best = spot; bestArea = area }
+          }
+        }
+        if (best) return best
       }
     }
     return null
