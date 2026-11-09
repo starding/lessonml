@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>LessonML · Pages</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1416; overflow: hidden; }
+  lml-pages { position: fixed; inset: 0; }
+  .log { position: fixed; left: 12px; bottom: 12px; z-index: 2; font: 11px/1.5 ui-monospace, Menlo, monospace; color: #7fe0d4; pointer-events: none; text-shadow: 0 1px 3px #000; }
+</style>
+</head>
+<body>
+<!-- Pieter Bruegel the Elder, The Harvesters (1565), The Met, public domain. -->
+<lml-pages id="pages" src="../examples/harvest/the-harvesters.lml" world="../examples/harvest/world.json"></lml-pages>
+<div class="log" id="log"></div>
+<script type="module">
+import '../dist/src/player/pages.js'
+const pages = document.getElementById('pages')
+const log = document.getElementById('log')
+// A learner's frontier, as a host app would pass it.
+pages.frontier = ['scythe', 'sheaf', 'jug', 'nap', 'haystack', 'harvest', 'shade']
+document.addEventListener('gesturestart', (e) => e.preventDefault())
+for (const name of ['lml-word', 'lml-evidence', 'lml-page', 'lml-end', 'lml-error']) {
+  pages.addEventListener(name, (e) => { log.textContent = `${name} ${JSON.stringify(e.detail ?? {})}` })
+}
+</script>
+</body>
+</html>

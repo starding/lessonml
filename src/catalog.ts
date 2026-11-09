@@ -13,6 +13,10 @@ export interface CharacterEntry {
   rig?: CharacterSpec
   // A machine voice (an AI, a PA system): styled as the system, not a person.
   system?: boolean
+  // For illustrated pages: how the character looks, written for an image model,
+  // and a reference picture that keeps them the same from page to page.
+  look?: string
+  ref?: string
 }
 
 export interface PlaceEntry {
@@ -20,7 +24,11 @@ export interface PlaceEntry {
   description: string
   // Stage verbs this place understands and the arguments each accepts,
   // e.g. { camera: ["wide", "priya"], effect: ["shake"] }.
-  stage: Record<string, string[]>
+  stage?: Record<string, string[]>
+  // For illustrated pages: the place as an image model should draw it, and a
+  // reference picture so it is the same place every time it comes back.
+  look?: string
+  ref?: string
   // The drawing that plays this place (a set id known to the player) and who
   // sits in each of the set's character slots.
   set?: string
@@ -131,6 +139,14 @@ export const CORE_COMPONENTS: Record<string, ComponentEntry> = {
     facets: ['apply', 'predict', 'explain'],
     example: '? lessonml:explore double-it\n  prompt: Move the sliders until the money doubles.\n  controls: rate 0.01..0.12 step 0.01, years 1..30 step 1\n  goal: balance >= 2 * principal\n  on correct: evidence apply math:compound-interest'
   },
+  'lessonml:find': {
+    description: 'On an illustrated page: the learner searches the picture and taps every spot the prompt asks for ("find three things that could trip the robot"). The answers are spot ids on the same page, ideally the words being taught. Exploration and mystery stories are built from it.',
+    props: { required: ['prompt', 'targets'], optional: ['title'] },
+    options: null,
+    events: ['correct'],
+    facets: ['read', 'recall', 'apply'],
+    example: '? lessonml:find trip-hazards\n  prompt: Find three things Pip could trip over.\n  targets: box loop wire\n  on correct: evidence recall loop'
+  },
   'lessonml:write': {
     description: 'The learner writes a few sentences (a reply, an explanation of their reasoning). A reviewer supplied by the host app judges it; without one, the player checks the required words and length.',
     props: { required: ['prompt'], optional: ['targets', 'min_words', 'model', 'title'] },
@@ -164,12 +180,12 @@ export { closest }
 export const describeWorld = (world: World) => {
   const lines = [`# World ${world.namespace}: ${world.title}`, '', '## Characters (write the NAME in capitals as the speaker)']
   for (const [key, character] of Object.entries(world.characters)) {
-    lines.push(`- ${character.name.toUpperCase()} (${world.namespace}:${key}): ${character.description} Expressions: ${character.expressions.join(', ')}.`)
+    lines.push(`- ${character.name.toUpperCase()} (${world.namespace}:${key}): ${character.description} Expressions: ${character.expressions.join(', ')}.${character.look ? ` Looks: ${character.look}` : ''}`)
   }
-  lines.push('', '## Places (start a scene with "# scene <id> @<place-id>")')
+  lines.push('', '## Places (start a scene with "# scene <id> @<place-id>", or a page with "# page <id> @<place-id>")')
   for (const [key, place] of Object.entries(world.places)) {
-    lines.push(`- @${world.namespace}:${key}: ${place.description}`)
-    for (const [verb, args] of Object.entries(place.stage)) lines.push(`  ! ${verb} ${args.includes('*') ? '<free text>' : args.join(' | ')}`)
+    lines.push(`- @${world.namespace}:${key}: ${place.description}${place.look ? ` Looks: ${place.look}` : ''}`)
+    for (const [verb, args] of Object.entries(place.stage || {})) lines.push(`  ! ${verb} ${args.includes('*') ? '<free text>' : args.join(' | ')}`)
   }
   if (world.glossary && Object.keys(world.glossary).length) {
     lines.push('', '## Glossary (the sense each term has in this world)')

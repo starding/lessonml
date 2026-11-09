@@ -55,7 +55,42 @@ const collectBranches = (steps: Step[], out: Array<{ line: number; label: string
   }
 }
 
+// Illustrated pages have no state to play through: describe what the learner
+// can tap, what the tour says and frames, and what each find proves.
+const simulatePages = (lesson: Lesson, world?: World): string => {
+  const out: string[] = []
+  const met = new Set<string>()
+  const evidence: string[] = []
+  let finds = 0
+  const flat = (steps: Step[]): Step[] => steps.flatMap((step) => step.kind === 'branch' ? flat(step.steps) : [step])
+  lesson.pages.forEach((page, index) => {
+    out.push(`page ${index + 1} ${page.id}${page.place ? ` @${page.place}` : ''} [${page.image.src} ${page.image.width}x${page.image.height}]`)
+    out.push(`  spots (${page.spots.length}): ${page.spots.map((spot) => spot.word === spot.id ? spot.id : `${spot.id}=${spot.word}`).join(', ')}`)
+    page.spots.forEach((spot) => met.add(spot.word))
+    const spotWords = new Set(page.spots.map((spot) => spot.word))
+    for (const step of flat(page.steps)) {
+      if (step.kind === 'line') {
+        step.words.forEach((word) => met.add(word))
+        const who = step.speaker ? `${step.speaker.split(':')[1].toUpperCase()}: ` : '> '
+        const links = step.words.filter((word) => spotWords.has(word)), glossed = step.words.filter((word) => !spotWords.has(word))
+        out.push(`  ${who}${step.text}${step.look?.length ? `   [look ${step.look.join(' ')}]` : ''}${links.length ? `   {tap: ${links.join(', ')}}` : ''}${glossed.length ? `   {gloss: ${glossed.join(', ')}}` : ''}`)
+      } else if (step.kind === 'interaction') {
+        finds++
+        out.push(`  ? ${step.component} ${step.id}: ${step.props.prompt || ''}   [targets ${step.props.targets || ''}]`)
+        for (const action of step.handlers.correct || []) if (action.kind === 'evidence') evidence.push(`${action.facet} ${action.target}`)
+      }
+    }
+  })
+  out.push('', `pages: ${lesson.pages.length}`, `evidence when every find is solved: ${evidence.join(', ') || 'none'}`, `words met: ${[...met].join(', ') || 'none'}`)
+  if (!finds) out.push('warning: no lessonml:find on any page: the learner explores but never proves anything')
+  const missing = lesson.targets.filter((word) => !met.has(word))
+  if (missing.length) out.push(`warning: targets never taught: ${missing.join(', ')}`)
+  void world
+  return out.join('\n')
+}
+
 export function simulate(lesson: Lesson, answers: Record<string, Answer[]>, world?: World): string {
+  if (lesson.scenes.length === 0 && lesson.pages.length > 0) return simulatePages(lesson, world)
   const session = new LessonSession(lesson)
   const out: string[] = []
   const unreachable: string[] = []

@@ -1,0 +1,13 @@
+{
+  "namespace": "harvest",
+  "title": "A Flemish wheat field at harvest time, 1565 (Bruegel's The Harvesters)",
+  "characters": {},
+  "places": {
+    "wheat-field": {
+      "name": "The wheat field",
+      "description": "A hillside of ripe wheat above a village, a church and the sea; harvesters work and rest under a pear tree.",
+      "look": "Pieter Bruegel the Elder's The Harvesters (1565): golden wheat, a pear tree, a hazy bay.",
+      "ref": "harvesters.jpg"
+    }
+  }
+}

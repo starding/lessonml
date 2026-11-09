@@ -317,5 +317,96 @@ Simulate is cheap and catches structural problems. For example, it catches a cha
 | v0.4 | ✅ Subject-neutral evidence (targets and facet packs); glossary; `write` with pluggable reviewers; pluggable sets; embedded mode; math acceptance lesson |
 | v0.5 | ✅ Expression layer (formulas, live `{=…}` text, expression conditions); `numeric` with tolerance and units; `explore` sliders with goals; live charts in the classroom set |
 | v0.5.x | Formula typesetting (KaTeX); more live props (geometry, motion); a physics acceptance lesson |
-| v0.6 | Improvisation slots: lines a runtime model may improvise within a character card, state and lesson goal |
+| v0.6 | ✅ Illustrated pages (§11): `# page`, spots, `look:`, `targets:` coverage, `lessonml:find`, the `<lml-pages>` player |
+| v0.6.x | Spot placement by a vision model; page references for image models; more page components (pick-evidence on a picture) |
+| v0.7 | Improvisation slots: lines a runtime model may improvise within a character card, state and lesson goal |
 | later | Pack registry; npm release |
+
+## 11. Illustrated pages (v0.6)
+
+A scene is staged: a set, rigged characters, a camera. A page is painted: one finished illustration the learner explores, with narration that tours it. Pages exist because a picture that is good enough to look at for a long time is easier to make than an animation that is good enough to watch, and because it is still easy to make for one learner. The picture is shared; what each learner is shown in it, which words are lit and which story is told, is not.
+
+### 11.1 Syntax
+
+```text
+---
+lesson: rainy:saturday
+world: rainy
+learner_language: zh-CN
+targets: kettle steam rely
+glossary:
+  kettle: 水壶
+  steam: 蒸汽
+  rely: 依靠
+  "oven mitt": 隔热手套
+---
+# page kitchen @rainy:kitchen
+image: kitchen.jpg 1024x1536
+art: "Mei's small kitchen on a rainy morning: a kettle steaming on a gas stove, oven mitts on a rail, ..."
+spot kettle: 90 620 196 742
+spot steam: 60 520 130 625
+spot mitt "oven mitt": 248 455 300 570
+> The {kettle} is whistling, and {steam} curls into the air.
+  look: kettle steam
+  zh: 水壶在响，蒸汽打着卷儿升起。
+> We {rely} on that kettle every morning.
+? lessonml:find hot
+  prompt: Find the two hot things.
+  targets: kettle steam
+  on correct: evidence recall kettle
+```
+
+- `# page <id> [@place]` starts a page. The place is optional; when given, it must exist in the world.
+- `image:` is the picture and its size in pixels. Paths resolve against the lesson file.
+- `art:` is what the illustrator, a person or an image model, was asked to draw. It is kept in the IR so the picture can be regenerated and checked.
+- `spot <id> ["word"]: shapes` is a thing the learner can tap. The word defaults to the id. A shape is a rectangle `x1 y1 x2 y2` or `poly x y x y x y …`; several shapes are joined with `|`. Coordinates are image pixels.
+- Lines are the same as in scenes. `look:` names the spots the camera frames while the line is read.
+- A `{word}` that has a spot links to the picture; any other `{word}` is glossed in the text. This is how words that cannot be drawn (rely, nevertheless) are taught on a page.
+- `targets:` in the front matter lists the words the lesson was written to teach, for example a learner's frontier. Each must be a spot or a marked word somewhere.
+
+### 11.2 Checks
+
+| Code | Meaning |
+|---|---|
+| `missing-image`, `image-line` | A page needs `image: <path> <width>x<height>` |
+| `spot-shape`, `spot-line` | A rectangle is four numbers with x2 > x1, y2 > y1; a polygon is `poly` and at least three points |
+| `spot-outside-image` | Coordinates reach outside the image |
+| `duplicate-spot` | Two spots share an id |
+| `unknown-spot` | `look:` or a find's `targets:` names a spot that is not on the page |
+| `missing-gloss` | With `learner_language`, every spot word and every unlinked `{word}` needs a gloss |
+| `target-not-covered` | A word in `targets:` is never a spot or a marked word |
+| `stage-on-page`, `component-not-on-pages` | Pages have no stage directions; they run `lessonml:find` only |
+
+### 11.3 `lessonml:find`
+
+The learner searches the picture and taps every spot in `targets`. A wrong tap is answered with "not this one"; when all are found, the `correct` handler runs. Its evidence facets are `read`, `recall` and `apply`. Exploration and mystery stories are built from it: "Pip short-circuited. Find the three things in the workshop that conduct electricity."
+
+### 11.4 Player: `<lml-pages>`
+
+```html
+<script type="module" src="lessonml/dist/src/player/pages.js"></script>
+<lml-pages src="episode.lml" world="world.json"></lml-pages>
+<script>
+  const pages = document.querySelector('lml-pages')
+  pages.frontier = ['kettle', 'rely']         // the learner's frontier: lit in the picture and the text
+  pages.speak = (text, kind) => myVoice(text) // optional; defaults to speech synthesis
+</script>
+```
+
+- **Explore:** drag, pinch and double-tap to look around; tap a thing to open its card (word, gloss, and the line on this page that uses it).
+- **Tour:** lines play as subtitles while the camera frames their `look:` spots; linked words fly to the picture, glossed words show their gloss. A find pauses the tour until it is solved.
+- **Pages:** `next()`, `prev()`, `goto(i)`; at the end of a page the subtitle offers the next one, which starts with one tap so audio stays allowed on phones.
+- **Events:** `lml-word` `{word, target, source: 'spot' | 'text', page}`, `lml-evidence` `{facet, target, interaction}`, `lml-page` `{index, id}`, `lml-end`, `lml-error`.
+
+Taps are not evidence: looking a word up is exposure. Only a solved find produces evidence.
+
+### 11.5 World entries for pictures
+
+Characters and places may carry `look` (how to draw them, written for an image model) and `ref` (a reference picture). They are how a recurring character or place stays the same from page to page and episode to episode. `describeWorld` includes them.
+
+### 11.6 Making a page
+
+1. A model writes the page with `art:`, naming every object it intends to make a spot, and the lines, using the learner's targets.
+2. An image model draws the `art`, given the `ref` pictures of the characters and place.
+3. Spots are placed on the finished picture. Today a person or a vision model does this; the coordinates must come from the picture, never from the prompt.
+4. `compile` and `simulate` check the result.

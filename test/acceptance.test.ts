@@ -6,7 +6,8 @@ import { compile, defaultReviewer, getSet, LessonSession, type Frame, type World
 import { simulate } from '../src/mcp/simulate.js'
 
 // Cross-subject acceptance (SPEC.md §1): every example lesson, language and
-// math alike, must compile, play to the end without warnings, and have a set.
+// math alike, must compile, play to the end without warnings, and have a set
+// (illustrated pages have no set: their pictures are the stage).
 const lessons = fs.readdirSync('examples').flatMap((dir) => fs.readdirSync(path.join('examples', dir))
   .filter((file) => file.endsWith('.lml')).map((file) => path.join('examples', dir, file)))
 

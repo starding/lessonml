@@ -1,0 +1,91 @@
+---
+lesson: harvest:the-harvesters
+world: harvest
+language: en
+learner_language: zh-CN
+targets: scythe sheaf jug nap haystack harvest shade
+glossary:
+  sky: 天空
+  sea: 海
+  hill: 山丘
+  village: 村庄
+  church: 教堂
+  haystack: 干草堆
+  wheat: 小麦
+  sheaf: 麦捆
+  farmer: 农夫
+  scythe: 长柄大镰刀
+  bird: 鸟
+  jug: 水罐
+  tree: 树
+  trunk: 树干
+  lunch: 午饭
+  nap: 小睡
+  basket: 篮子
+  bread: 面包
+  bowl: 碗
+  "straw hat": 草帽
+  boy: 男孩
+  harvest: 收割、收获
+  shade: 阴凉处
+---
+// Pieter Bruegel the Elder, The Harvesters (1565). The Metropolitan Museum of
+// Art, public domain. Coordinates are pixels of harvesters.jpg (2400x1769).
+
+# page field @harvest:wheat-field
+image: harvesters.jpg 2400x1769
+art: "A wide summer landscape at harvest time: tall golden wheat, farmers cutting it with scythes, sheaves standing in rows, a village, a church and the sea in the distance."
+spot sky: 0 0 819 523
+spot sea: 0 523 1260 649
+spot hill: 0 649 661 787
+spot village: 661 724 1134 882
+spot church: 1663 491 1782 724
+spot haystack: 164 863 277 932
+spot wheat: 0 1008 1448 1769 | poly 1134 1008 1700 838 1700 1071 1448 1197
+spot sheaf: 1121 1260 1272 1467 | 2059 1159 2236 1367 | 1977 932 2374 1291
+spot farmer: 491 1206 630 1442
+spot scythe: 372 1310 482 1606 | 365 1625 532 1669
+spot bird: 239 1112 277 1143 | 291 1135 329 1173
+spot jug-1 "jug": 242 1549 296 1700
+spot jug-2 "jug": 765 1256 806 1304
+spot jug-3 "jug": 1722 1237 1782 1278
+> It is a hot afternoon at the end of summer, and the {wheat} is ready for the {harvest}.
+  look: wheat
+  zh: 这是夏末一个炎热的下午，麦子熟了，等着收割。
+> A {farmer} is still cutting it with a long {scythe}.
+  look: farmer scythe
+  zh: 一个农夫还在用长柄大镰刀割麦。
+> The cut wheat is tied into {sheaves|sheaf} that stand like little tents.
+  look: sheaf
+  zh: 割下的麦子被捆成麦捆，像一顶顶小帐篷一样立着。
+> Far away, past the {village} and the {church}, the {sea} shines under a pale {sky}.
+  look: village church
+  zh: 远处，越过村庄和教堂，大海在淡淡的天空下闪着光。
+? lessonml:find three-jugs
+  prompt: Someone hid drinks from the sun. Find all three jugs.
+  targets: jug-1 jug-2 jug-3
+  on correct: evidence recall jug
+
+# page lunch @harvest:wheat-field
+image: harvesters.jpg 2400x1769
+spot tree: 819 0 2400 630
+spot trunk: 1474 781 1587 1562
+spot lunch: 1612 1241 2204 1700
+spot nap: 1083 1379 1474 1726
+spot basket: 1511 1537 1700 1694
+spot bread: 1568 1568 1653 1650
+spot bowl: 1782 1326 1842 1363 | 1914 1360 1981 1389 | 2028 1448 2078 1480
+spot hat "straw hat": 1782 1379 1889 1428
+spot boy: 2025 1499 2160 1700
+> Under the {tree}, the workers stop for {lunch} in the {shade}.
+  look: lunch tree
+  zh: 树下，干活的人在阴凉处停下来吃午饭。
+> There is {bread} from a {basket}, and porridge in wooden {bowls|bowl}.
+  look: basket bowl
+  zh: 有篮子里的面包，还有木碗里的粥。
+> One man does not eat at all. He takes a {nap} against the tree {trunk}.
+  look: nap trunk
+  zh: 有个人什么都没吃，靠着树干睡起了午觉。
+> A {boy} in white listens, and a man in a {straw hat|straw hat} laughs at a joke.
+  look: boy hat
+  zh: 一个穿白衣服的男孩在听，一个戴草帽的人被笑话逗乐了。

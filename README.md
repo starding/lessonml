@@ -41,7 +41,8 @@ This is an early draft. It already includes:
 - a reference interpreter and the `<lml-scene>` web component (v0.2);
 - an MCP server for the model authoring loop (v0.3);
 - subject-neutral evidence, a glossary, writing tasks with pluggable reviewers, pluggable place sets and an embedded mode, with a math lesson as the acceptance test (v0.4);
-- a safe expression layer: formulas, live values in text, numeric answers with tolerance, and slider explorations with goals and live charts (v0.5). See `examples/classroom/compound-interest.lml`.
+- a safe expression layer: formulas, live values in text, numeric answers with tolerance, and slider explorations with goals and live charts (v0.5). See `examples/classroom/compound-interest.lml`;
+- illustrated pages: a painted picture the learner explores, with tappable things, a narrated tour, finds as evidence, and a `targets:` check that every word the lesson promised is taught (v0.6). See `examples/harvest/the-harvesters.lml` and `playground/pages.html`.
 
 The full design is in [SPEC.md](SPEC.md).
 
@@ -55,6 +56,15 @@ The project started inside HeatWords, an English-learning app for professionals.
 ```
 
 In standalone mode the element listens to swipes, the wheel and the keyboard. With `controls="host"`, your app drives it with `next()` and `back()` and draws its own navigation; see `playground/embed.html`. It reports learning evidence and story state as DOM events (`lml-evidence`, `lml-state`), so the host app owns the learner's record.
+
+Illustrated pages play in `<lml-pages>`:
+
+```html
+<script type="module" src="lessonml/dist/src/player/pages.js"></script>
+<lml-pages src="episode.lml" world="world.json"></lml-pages>
+```
+
+Set `frontier` to the learner's words to light them up, and `speak` to use your own voice. See SPEC.md §11.
 
 ## Let a model write lessons (MCP)
 

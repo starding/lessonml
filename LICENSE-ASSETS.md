@@ -7,3 +7,5 @@ You may share and adapt them for any purpose, including commercially, as long as
 Full legal code: https://creativecommons.org/licenses/by/4.0/legalcode
 
 Source code is licensed separately under Apache-2.0 (see LICENSE).
+
+`examples/harvest/harvesters.jpg` is Pieter Bruegel the Elder, *The Harvesters* (1565), from The Metropolitan Museum of Art's Open Access collection (object 435809). It is in the public domain.

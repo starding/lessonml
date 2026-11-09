@@ -16,7 +16,35 @@ export interface Lesson {
   formulas: Record<string, string>
   // Lesson-level senses; they override the world's glossary. Keys are target ids.
   glossary: Record<string, { gloss: string; definition?: string }>
+  // Words the lesson was written to teach (e.g. a learner's frontier). The
+  // compiler checks each one is a hotspot or a marked {word} somewhere.
+  targets: string[]
   scenes: Scene[]
+  // Illustrated pages (SPEC.md §11): a picture, its hotspots, and narration.
+  pages: Page[]
+}
+
+// A page is one illustration the learner explores, with narration that tours it.
+export interface Page {
+  id: string
+  // Optional: the world place the picture shows (for continuity and image references).
+  place: Id | null
+  line: number
+  image: { src: string; width: number; height: number }
+  // What the illustrator (a person or an image model) was asked to draw.
+  art?: string
+  spots: Spot[]
+  steps: Step[]
+}
+
+// Something in the picture the learner can tap. Coordinates are image pixels.
+export interface Spot {
+  id: string
+  // The word the spot teaches (a lemma); defaults to the id.
+  word: string
+  // Polygons; a rectangle is written as four numbers and stored as four points.
+  shapes: [number, number][][]
+  line: number
 }
 
 export interface Scene {
@@ -37,6 +65,11 @@ export interface LineStep {
   text: string
   translation?: string
   words: string[]
+  // Each {mark} as written and the word it teaches, in order: lets a player
+  // wrap the surface form ("verified") while teaching the lemma ("verify").
+  marks?: { surface: string; word: string }[]
+  // On a page: spot ids the camera frames while this line is read.
+  look?: string[]
 }
 
 // Stage direction: `! verb args...`. Verbs are defined by the place's set.

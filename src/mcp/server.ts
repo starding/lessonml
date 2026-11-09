@@ -93,6 +93,24 @@ NAME (expression): "Spoken line with a {target} word or {surface|lemma}."
   on wrong: NAME (expression): "reaction"
 if <expression>:          # e.g. trust.priya > 0 && balance > 2000
   NAME (smile): "only if the learner earned it"
+
+## Illustrated pages (v0.6): a picture to explore instead of a staged scene
+targets: kettle steam rely  # front matter: the words this lesson was written to teach; each must be a spot or a {word}
+# page <id> @<namespace>:<place>    # the place is optional; it keeps a recurring place the same
+image: kitchen.jpg 1024x1536        # path relative to the lesson, and its size in pixels
+art: "What the illustrator or image model is asked to draw; name every object you will make a spot."
+spot kettle: 90 620 196 742         # x1 y1 x2 y2 in image pixels; the spot teaches the word "kettle"
+spot mitt "oven mitt": 712 300 808 450 | 248 455 300 570    # quoted word; several shapes joined with |
+spot hose: poly 10 10 80 20 70 60   # a polygon
+> The {kettle} is whistling, and we {rely} on it every morning.
+  look: kettle                      # spots the camera frames while this line is read
+  zh: 水壶在响，我们每天早上都靠它。
+? lessonml:find hot-things          # the only component pages run: find spots in the picture
+  prompt: Find two things that are hot.
+  targets: kettle stove             # spot ids on this page
+  on correct: evidence recall kettle
+A {word} with a spot of the same word links to the picture; any other {word} is glossed in the text (give it a gloss).
+Pages have no stage directions and no set: the picture is the stage.
 Live values anywhere in text: {=round(balance)}. Expressions: + - * / % ^, comparisons, && || !, abs sqrt exp ln log10 sin cos tan floor ceil round(x, digits) min max pow clamp, constants pi e g. No strings, no code.
 
 ## Components
@@ -108,10 +126,11 @@ ${Object.entries(CORE_COMPONENTS).map(([id, c]) => `### ${id}\n${c.description}\
 - Give every {marked} word a gloss: in the world's glossary, or under "glossary:" in the front matter (term: 释义 | definition).
 - For math and science: put the model in "formulas:", show live values with {=…}, ask for a prediction with lessonml:numeric before revealing, and let the learner discover the relationship with lessonml:explore. Make explore goals tight enough that every solution supports what you say next.
 - A character only appears when the set shows their slot: check the place description and switch the screen or camera back before they speak.
+- Pages: write the "art:" first, naming every object, then a spot for each one you name. Put words you can draw in the picture and words you cannot (rely, nevertheless) in the lines. End a page with a lessonml:find whose answers are the words being taught. Spot coordinates come from the finished picture, never from imagination.
 - Style packs (the player's drawing rules, never named in a lesson): ${Object.keys(STYLE_PACKS).join(', ')}.`
 
 export function createServer() {
-  const server = new McpServer({ name: 'lessonml', version: '0.5.0' })
+  const server = new McpServer({ name: 'lessonml', version: '0.6.0' })
 
   server.registerTool('lessonml_guide', {
     title: 'LessonML authoring guide',

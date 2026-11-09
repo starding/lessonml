@@ -5,7 +5,7 @@ import path from 'node:path'
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const port = Number(process.argv[2] || process.env.PORT || 4173)
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.svg': 'image/svg+xml', '.lml': 'text/plain; charset=utf-8' }
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.svg': 'image/svg+xml', '.lml': 'text/plain; charset=utf-8', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' }
 http.createServer((req, res) => {
   const url = decodeURIComponent((req.url || '/').split('?')[0])
   const file = path.join(root, url === '/' ? 'playground/index.html' : url)

@@ -4,7 +4,7 @@
 // read most of: speaker lines, narration, stage directions. Every construct
 // is one line; blocks are indented by two spaces.
 
-import type { Action, BranchStep, Diagnostic, InteractionOption, InteractionStep, Lesson, LineStep, Scene, Step } from './ir.js'
+import type { Action, BranchStep, Diagnostic, InteractionOption, InteractionStep, Lesson, LineStep, Page, Scene, Spot, Step } from './ir.js'
 
 interface SourceLine { no: number; indent: number; text: string }
 
@@ -15,11 +15,14 @@ const WORD_MARK = /\{(?!=)([^}|]+)(?:\|([^}]+))?\}/g
 // text "verified", word "verify".
 export const extractWords = (raw: string) => {
   const words: string[] = []
+  const marks: { surface: string; word: string }[] = []
   const text = raw.replace(WORD_MARK, (_, surface: string, lemma?: string) => {
-    words.push((lemma || surface).trim().toLowerCase())
+    const word = (lemma || surface).trim().toLowerCase()
+    words.push(word)
+    marks.push({ surface, word })
     return surface
   })
-  return { text, words }
+  return { text, words, marks }
 }
 
 const unquote = (value: string) => {
@@ -29,6 +32,9 @@ const unquote = (value: string) => {
 
 const SPEAKER_LINE = /^([A-Z][A-Z0-9_]*)\s*(?:\(([a-z-]+)\))?\s*:\s*(.+)$/
 const SCENE_LINE = /^#\s*scene\s+([a-z0-9-]+)\s+@([a-z0-9-]+:[a-z0-9/-]+)\s*$/
+const PAGE_LINE = /^#\s*page\s+([a-z0-9-]+)(?:\s+@([a-z0-9-]+:[a-z0-9/-]+))?\s*$/
+const SPOT_LINE = /^spot\s+([a-z0-9-]+)(?:\s+"([^"]+)")?\s*:\s*(.+)$/
+const IMAGE_LINE = /^image\s*:\s*(\S+)\s+(\d+)x(\d+)\s*$/
 const CONDITION = /^if\s+(.+?)\s*:\s*$/
 const SET_ACTION = /^set\s+([A-Za-z_][\w.]*)\s*(\+=|-=|=)\s*(.+)$/
 
@@ -39,7 +45,7 @@ export interface ParseResult {
 
 export function parseScreenplay(source: string): ParseResult {
   const diagnostics: Diagnostic[] = []
-  const lesson: Lesson = { id: '', world: '', language: 'en', state: {}, formulas: {}, glossary: {}, scenes: [] }
+  const lesson: Lesson = { id: '', world: '', language: 'en', state: {}, formulas: {}, glossary: {}, targets: [], scenes: [], pages: [] }
   const rawLines = source.replace(/\r\n/g, '\n').split('\n')
   let cursor = 0
 
@@ -51,7 +57,8 @@ export function parseScreenplay(source: string): ParseResult {
       const raw = rawLines[cursor]
       if (!raw.trim() || raw.trim().startsWith('//')) continue
       const nested = /^\s+/.test(raw)
-      const match = raw.trim().match(/^([a-z_.0-9:'/-]+)\s*:\s*(.*)$/)
+      // Keys are bare ("pitch") or quoted when they hold spaces ("straw hat").
+      const match = raw.trim().match(/^([a-z_.0-9:'/-]+)\s*:\s*(.*)$/) || raw.trim().match(/^"([^"]+)"\s*:\s*(.*)$/)
       if (!match) {
         diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `cannot read "${raw.trim()}". Front matter lines are "key: value".` })
         continue
@@ -77,7 +84,8 @@ export function parseScreenplay(source: string): ParseResult {
       else if (key === 'world') lesson.world = value.trim()
       else if (key === 'language') lesson.language = value.trim()
       else if (key === 'learner_language') lesson.learnerLanguage = value.trim()
-      else if (!section) diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `unknown key "${key}".`, suggestions: ['lesson', 'world', 'language', 'learner_language', 'state', 'formulas', 'glossary'] })
+      else if (key === 'targets') lesson.targets = value.split(/[\s,]+/).map((word) => word.trim().toLowerCase()).filter(Boolean)
+      else if (!section) diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `unknown key "${key}".`, suggestions: ['lesson', 'world', 'language', 'learner_language', 'targets', 'state', 'formulas', 'glossary'] })
     }
     cursor += 1
   }
@@ -94,13 +102,13 @@ export function parseScreenplay(source: string): ParseResult {
 
   const parseLine = (line: SourceLine): LineStep | null => {
     if (line.text.startsWith('>')) {
-      const { text, words } = extractWords(line.text.slice(1).trim())
-      return { kind: 'line', line: line.no, speaker: null, text, words }
+      const { text, words, marks } = extractWords(line.text.slice(1).trim())
+      return { kind: 'line', line: line.no, speaker: null, text, words, marks }
     }
     const match = line.text.match(SPEAKER_LINE)
     if (!match) return null
-    const { text, words } = extractWords(unquote(match[3]))
-    return { kind: 'line', line: line.no, speaker: match[1].toLowerCase(), expression: match[2], text, words }
+    const { text, words, marks } = extractWords(unquote(match[3]))
+    return { kind: 'line', line: line.no, speaker: match[1].toLowerCase(), expression: match[2], text, words, marks }
   }
 
   const parseAction = (line: SourceLine): Action | null => {
@@ -213,7 +221,9 @@ export function parseScreenplay(source: string): ParseResult {
       const spoken = parseLine(line)
       if (spoken) {
         const { children, next } = childrenOf(index)
-        const translation = children.find((child) => /^[a-z]{2}(-[A-Za-z]+)?\s*:/.test(child.text))
+        const look = children.find((child) => /^look\s*:/.test(child.text))
+        if (look) spoken.look = look.text.replace(/^look\s*:/, '').trim().split(/[\s,]+/).filter(Boolean)
+        const translation = children.find((child) => !/^look\s*:/.test(child.text) && /^[a-z]{2}(-[A-Za-z]+)?\s*:/.test(child.text))
         if (translation) spoken.translation = unquote(translation.text.replace(/^[a-z]{2}(-[A-Za-z]+)?\s*:/, ''))
         steps.push(spoken)
         index = next
@@ -230,18 +240,80 @@ export function parseScreenplay(source: string): ParseResult {
     return steps
   }
 
+  // ── Pages ─────────────────────────────────────────────────────────────────
+  // Header lines (image:, art:, spot ...) come first; the rest are steps.
+  const parsePage = (start: number, end: number, id: string, place: string | null): Page => {
+    const head = lines[start]
+    const page: Page = { id, place, line: head.no, image: { src: '', width: 0, height: 0 }, spots: [], steps: [] }
+    let index = start + 1
+    for (; index < end; index++) {
+      const line = lines[index]
+      if (line.indent !== 0) break
+      const image = line.text.match(IMAGE_LINE)
+      if (image) { page.image = { src: image[1], width: Number(image[2]), height: Number(image[3]) }; continue }
+      if (/^image\s*:/.test(line.text)) {
+        diagnostics.push({ line: line.no, code: 'image-line', message: 'write the image as "image: <path> <width>x<height>", e.g. "image: kitchen.jpg 1024x1536".' })
+        continue
+      }
+      const art = line.text.match(/^art\s*:\s*(.+)$/)
+      if (art) { page.art = unquote(art[1]); continue }
+      const spot = line.text.match(SPOT_LINE)
+      if (spot) {
+        const parsed = parseShapes(spot[3])
+        if (typeof parsed === 'string') diagnostics.push({ line: line.no, code: 'spot-shape', message: `spot ${spot[1]}: ${parsed}`, suggestions: ['spot kettle: 90 620 196 742', 'spot cup: 10 10 40 40 | 60 10 90 40', 'spot hose: poly 10 10 80 20 70 60'] })
+        page.spots.push({ id: spot[1], word: (spot[2] || spot[1]).toLowerCase(), shapes: typeof parsed === 'string' ? [] : parsed, line: line.no } satisfies Spot)
+        continue
+      }
+      if (/^spot\b/.test(line.text)) {
+        diagnostics.push({ line: line.no, code: 'spot-line', message: 'write a spot as "spot <id>: x1 y1 x2 y2" or "spot <id> \"two words\": ...".' })
+        continue
+      }
+      break
+    }
+    page.steps = parseBlock(index, end, 0)
+    return page
+  }
+
+  // "x1 y1 x2 y2 | poly x y x y x y ..." → polygons in image pixels.
+  const parseShapes = (raw: string): [number, number][][] | string => {
+    const shapes: [number, number][][] = []
+    for (const part of raw.split('|').map((piece) => piece.trim()).filter(Boolean)) {
+      const poly = part.startsWith('poly')
+      const numbers = part.replace(/^poly/, '').trim().split(/[\s,]+/).map(Number)
+      if (numbers.some((n) => !Number.isFinite(n))) return `"${part}" has something that is not a number.`
+      if (!poly) {
+        if (numbers.length !== 4) return `a rectangle is four numbers "x1 y1 x2 y2", got ${numbers.length}.`
+        const [x1, y1, x2, y2] = numbers
+        if (x2 <= x1 || y2 <= y1) return `rectangle "${part}" needs x2 > x1 and y2 > y1.`
+        shapes.push([[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+      } else {
+        if (numbers.length < 6 || numbers.length % 2) return `a polygon is "poly" and at least three x y pairs, got ${numbers.length} numbers.`
+        const points: [number, number][] = []
+        for (let i = 0; i < numbers.length; i += 2) points.push([numbers[i], numbers[i + 1]])
+        shapes.push(points)
+      }
+    }
+    return shapes.length ? shapes : 'no shape given.'
+  }
+
   // ── Scenes ────────────────────────────────────────────────────────────────
   let index = 0
   while (index < lines.length) {
     const line = lines[index]
     const scene = line.indent === 0 ? line.text.match(SCENE_LINE) : null
+    const pageHead = line.indent === 0 && !scene ? line.text.match(PAGE_LINE) : null
+    let end = index + 1
+    while (end < lines.length && !(lines[end].indent === 0 && lines[end].text.startsWith('#'))) end++
+    if (pageHead) {
+      lesson.pages.push(parsePage(index, end, pageHead[1], pageHead[2] || null))
+      index = end
+      continue
+    }
     if (!scene) {
-      diagnostics.push({ line: line.no, code: 'outside-scene', message: 'every step belongs to a scene. Start one with "# scene <id> @<place-id>".' })
+      diagnostics.push({ line: line.no, code: 'outside-scene', message: 'every step belongs to a scene or a page. Start one with "# scene <id> @<place-id>" or "# page <id>".' })
       index++
       continue
     }
-    let end = index + 1
-    while (end < lines.length && !(lines[end].indent === 0 && lines[end].text.startsWith('#'))) end++
     const parsed: Scene = { id: scene[1], place: scene[2], line: line.no, steps: parseBlock(index + 1, end, 0) }
     lesson.scenes.push(parsed)
     index = end

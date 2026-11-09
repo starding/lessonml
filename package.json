@@ -1,6 +1,6 @@
 {
   "name": "lessonml",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "description": "A screenplay language for interactive, narrative lessons, designed to be written by language models.",
   "type": "module",
   "license": "Apache-2.0",
@@ -41,6 +41,10 @@
     "./player": {
       "types": "./dist/src/player/element.d.ts",
       "default": "./dist/src/player/element.js"
+    },
+    "./pages": {
+      "types": "./dist/src/player/pages.d.ts",
+      "default": "./dist/src/player/pages.js"
     },
     "./package.json": "./package.json"
   }

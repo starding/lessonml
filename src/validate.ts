@@ -5,7 +5,7 @@
 // repair it without a human.
 
 import { CORE_COMPONENTS, EVIDENCE_FACETS, TARGET_ID, closest, toTargetId, type World } from './catalog.js'
-import type { Diagnostic, Lesson, LineStep, Step } from './ir.js'
+import type { Diagnostic, Lesson, LineStep, Page, Step } from './ir.js'
 import { CONSTANTS, ExprError, FUNCTIONS, INTERPOLATION, callsIn, namesIn, parseExpr } from './expr.js'
 import { parseControls } from './controls.js'
 import { parseScreenplay } from './screenplay.js'
@@ -87,6 +87,54 @@ export function compile(source: string, world: World): CompileResult {
     }
   }
 
+  // Pages: a picture that exists, spots inside it, lines that look at real
+  // spots, and every word explained (a spot card or a gloss).
+  const checkPage = (page: Page) => {
+    if (page.place) {
+      const [namespace, placeKey] = page.place.split(':')
+      if (namespace !== ns || !world.places[placeKey]) report(page.line, 'unknown-place', `no place @${page.place} in ${ns}.`, closest(placeKey || '', Object.keys(world.places)).map((key) => `@${ns}:${key}`))
+    }
+    const { width, height } = page.image
+    if (!page.image.src) report(page.line, 'missing-image', `page ${page.id} needs "image: <path> <width>x<height>".`)
+    const ids = new Set<string>()
+    for (const spot of page.spots) {
+      if (ids.has(spot.id)) report(spot.line, 'duplicate-spot', `spot "${spot.id}" is defined twice on page ${page.id}; give each spot its own id, or join the shapes with "|".`)
+      ids.add(spot.id)
+      for (const shape of spot.shapes) {
+        if (width && height && shape.some(([x, y]) => x < 0 || y < 0 || x > width || y > height)) {
+          report(spot.line, 'spot-outside-image', `spot ${spot.id} reaches outside the ${width}x${height} image; coordinates are image pixels.`)
+          break
+        }
+      }
+    }
+    const spotWords = new Set(page.spots.map((spot) => spot.word))
+    const gloss = (word: string) => lesson.glossary[toTargetId(word, lesson.language)] || world.glossary?.[toTargetId(word, lesson.language)]
+    const explain = (word: string, line: number) => {
+      if (lesson.learnerLanguage && !gloss(word)) report(line, 'missing-gloss', `"${word}" has no gloss for ${lesson.learnerLanguage} learners. Add it under "glossary:" in the front matter.`)
+    }
+    page.spots.forEach((spot) => explain(spot.word, spot.line))
+    const visit = (steps: Step[]) => {
+      for (const step of steps) {
+        if (step.kind === 'line') {
+          checkLine(step)
+          for (const id of step.look || []) {
+            if (!ids.has(id)) report(step.line, 'unknown-spot', `look: no spot "${id}" on page ${page.id}.`, closest(id, [...ids]))
+          }
+          step.words.filter((word) => !spotWords.has(word)).forEach((word) => explain(word, step.line))
+        } else if (step.kind === 'stage') {
+          report(step.line, 'stage-on-page', `pages have no stage directions; the camera follows "look:" under each line.`)
+        } else if (step.kind === 'interaction') {
+          if (step.component !== 'lessonml:find') report(step.line, 'component-not-on-pages', `${step.component} does not run on pages yet. Pages support: lessonml:find.`)
+          for (const id of (step.props.targets || '').split(/[\s,]+/).filter(Boolean)) {
+            if (!ids.has(id)) report(step.line, 'unknown-spot', `${step.id} targets: no spot "${id}" on page ${page.id}.`, closest(id, [...ids]))
+          }
+        } else if (step.kind === 'branch') visit(step.steps)
+      }
+    }
+    visit(page.steps)
+    checkSteps(page.steps.filter((step) => step.kind === 'interaction'), '')
+  }
+
   const checkSteps = (steps: Step[], placeKey: string) => {
     const place = world.places[placeKey]
     for (const step of steps) {
@@ -94,9 +142,10 @@ export function compile(source: string, world: World): CompileResult {
       else if (step.kind === 'stage') {
         checkText(step.args.join(' '), step.line, `! ${step.verb}`)
         if (!place) continue
-        const allowed = place.stage[step.verb]
+        const verbs = place.stage || {}
+        const allowed = verbs[step.verb]
         if (!allowed) {
-          report(step.line, 'unknown-stage-verb', `@${ns}:${placeKey} has no stage verb "${step.verb}". Available: ${Object.keys(place.stage).join(', ')}.`, closest(step.verb, Object.keys(place.stage)))
+          report(step.line, 'unknown-stage-verb', `@${ns}:${placeKey} has no stage verb "${step.verb}". Available: ${Object.keys(verbs).join(', ')}.`, closest(step.verb, Object.keys(verbs)))
           continue
         }
         if (allowed.includes('*')) continue
@@ -164,6 +213,8 @@ export function compile(source: string, world: World): CompileResult {
     }
   }
 
+  for (const page of lesson.pages) checkPage(page)
+
   for (const scene of lesson.scenes) {
     const [namespace, placeKey] = scene.place.split(':')
     if (namespace !== ns || !world.places[placeKey]) {
@@ -171,7 +222,25 @@ export function compile(source: string, world: World): CompileResult {
     }
     checkSteps(scene.steps, placeKey)
   }
-  if (lesson.scenes.length === 0) report(1, 'empty', 'a lesson needs at least one "# scene <id> @<place-id>".')
+  if (lesson.scenes.length === 0 && lesson.pages.length === 0) report(1, 'empty', 'a lesson needs at least one "# scene <id> @<place-id>" or "# page <id>".')
+
+  // Targets: every word the lesson was written to teach must be met somewhere,
+  // as a spot to tap or a marked {word} in the text. Otherwise it was promised
+  // and quietly dropped.
+  if (lesson.targets.length) {
+    const met = new Set<string>()
+    const collect = (steps: Step[]) => {
+      for (const step of steps) {
+        if (step.kind === 'line') step.words.forEach((word) => met.add(word))
+        else if (step.kind === 'interaction') step.words.forEach((word) => met.add(word))
+        else if (step.kind === 'branch') collect(step.steps)
+      }
+    }
+    lesson.scenes.forEach((scene) => collect(scene.steps))
+    lesson.pages.forEach((page) => { collect(page.steps); page.spots.forEach((spot) => met.add(spot.word)) })
+    const missing = lesson.targets.filter((word) => !met.has(word))
+    if (missing.length) report(1, 'target-not-covered', `targets never taught: ${missing.join(', ')}. Draw each one as a spot or mark it as {word} in a line, or remove it from "targets:".`)
+  }
 
   diagnostics.sort((a, b) => a.line - b.line)
   return { lesson, diagnostics, ok: diagnostics.length === 0 }
