@@ -363,7 +363,7 @@ spot mitt "oven mitt": 248 455 300 570
 - `spot <id> ["word"]: shapes` is a thing the learner can tap. The word defaults to the id. A shape is a rectangle `x1 y1 x2 y2` or `poly x y x y x y …`; several shapes are joined with `|`. Coordinates are image pixels.
 - Lines are the same as in scenes. `look:` names the spots the camera frames while the line is read.
 - A `{word}` that has a spot links to the picture; any other `{word}` is glossed in the text. This is how words that cannot be drawn (rely, nevertheless) are taught on a page.
-- `targets:` in the front matter lists the words the lesson was written to teach, for example a learner's frontier. Each must be a spot or a marked word somewhere.
+- `targets:` in the front matter lists the words the lesson was written to teach, for example a learner's frontier. Each must be a spot or a marked word somewhere. Separate them with spaces, or with commas when a target has a space (`targets: kettle, oven mitt`).
 
 ### 11.2 Checks
 

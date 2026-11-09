@@ -84,7 +84,8 @@ export function parseScreenplay(source: string): ParseResult {
       else if (key === 'world') lesson.world = value.trim()
       else if (key === 'language') lesson.language = value.trim()
       else if (key === 'learner_language') lesson.learnerLanguage = value.trim()
-      else if (key === 'targets') lesson.targets = value.split(/[\s,]+/).map((word) => word.trim().toLowerCase()).filter(Boolean)
+      // "kettle steam rely", or with commas when a target has a space: "kettle, oven mitt".
+      else if (key === 'targets') lesson.targets = value.split(value.includes(',') ? ',' : /\s+/).map((word) => word.trim().toLowerCase()).filter(Boolean)
       else if (!section) diagnostics.push({ line: cursor + 1, code: 'front-matter', message: `unknown key "${key}".`, suggestions: ['lesson', 'world', 'language', 'learner_language', 'targets', 'state', 'formulas', 'glossary'] })
     }
     cursor += 1

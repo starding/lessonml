@@ -89,6 +89,13 @@ test('a page needs an image', () => {
   assert.deepEqual(compile(source, world).diagnostics.map((d) => d.code), ['missing-image', 'image-line'])
 })
 
+test('targets with a space are written with commas', () => {
+  const source = lesson('spot mitt "oven mitt": 10 10 50 50\n> The {kettle} is hot.\n  look: mitt', 'targets: kettle, oven mitt\n').replace('  rely: 依靠', '  rely: 依靠\n  "oven mitt": 隔热手套')
+  const result = compile(source, world)
+  assert.deepEqual(result.lesson.targets, ['kettle', 'oven mitt'])
+  assert.equal(formatDiagnostics(result.diagnostics), '')
+})
+
 test('glossary keys with spaces are quoted', () => {
   const { lesson: parsed } = compile(episode, world)
   assert.equal(parsed.glossary['en:straw hat']?.gloss, '草帽')
