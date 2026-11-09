@@ -1,6 +1,6 @@
 {
   "name": "lessonml",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "A screenplay language for interactive, narrative lessons, designed to be written by language models.",
   "type": "module",
   "license": "Apache-2.0",
@@ -31,7 +31,8 @@
     "playwright-core": "^1.65.0"
   },
   "bin": {
-    "lessonml-mcp": "dist/src/mcp/server.js"
+    "lessonml-mcp": "dist/src/mcp/server.js",
+    "lessonml-bridge": "dist/src/bridge/cli.js"
   },
   "exports": {
     ".": {

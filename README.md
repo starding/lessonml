@@ -66,6 +66,8 @@ Illustrated pages play in `<lml-pages>`:
 
 Set `frontier` to the learner's words to light them up, and `speak` to use your own voice. See SPEC.md §11.
 
+Pictures can be drawn by the learner's own models. `npx lessonml-bridge --origin https://your-app.example` runs a small paired server on 127.0.0.1 that draws pages and places spots with the learner's Codex CLI, so an app never pays for image generation (SPEC.md §11.7).
+
 ## Let a model write lessons (MCP)
 
 The MCP server gives any MCP client (Claude Code, Claude Desktop, others) the whole authoring loop:

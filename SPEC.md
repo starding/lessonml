@@ -318,7 +318,8 @@ Simulate is cheap and catches structural problems. For example, it catches a cha
 | v0.5 | ✅ Expression layer (formulas, live `{=…}` text, expression conditions); `numeric` with tolerance and units; `explore` sliders with goals; live charts in the classroom set |
 | v0.5.x | Formula typesetting (KaTeX); more live props (geometry, motion); a physics acceptance lesson |
 | v0.6 | ✅ Illustrated pages (§11): `# page`, spots, `look:`, `targets:` coverage, `lessonml:find`, the `<lml-pages>` player |
-| v0.6.x | Spot placement by a vision model; page references for image models; more page components (pick-evidence on a picture) |
+| v0.6.1 | ✅ `lessonml-bridge`: the learner's own Codex draws pages and places spots |
+| v0.6.x | Gemini provider; more page components (pick-evidence on a picture) |
 | v0.7 | Improvisation slots: lines a runtime model may improvise within a character card, state and lesson goal |
 | later | Pack registry; npm release |
 
@@ -408,5 +409,24 @@ Characters and places may carry `look` (how to draw them, written for an image m
 
 1. A model writes the page with `art:`, naming every object it intends to make a spot, and the lines, using the learner's targets.
 2. An image model draws the `art`, given the `ref` pictures of the characters and place.
-3. Spots are placed on the finished picture. Today a person or a vision model does this; the coordinates must come from the picture, never from the prompt.
+3. Spots are placed on the finished picture by a vision model given the list of objects the `art` named; a person reviews them. The coordinates must come from the picture, never from the prompt.
 4. `compile` and `simulate` check the result.
+
+### 11.7 The bridge: the learner's own image models
+
+Drawing pictures costs money per picture. An app that cannot pay for every learner's pictures can let learners use their own models. `lessonml-bridge` is a small server the learner runs on their computer:
+
+```bash
+npx lessonml-bridge --origin https://your-app.example
+```
+
+It listens on 127.0.0.1 only, answers only the given origins (with the Private Network Access header browsers ask for), and requires a pairing token kept in `~/.lessonml/bridge.json`. It runs long work as jobs:
+
+| Call | Body | Result |
+|---|---|---|
+| `POST /images` | `{prompt, refs?: dataURL[], size?: "1024x1536"}` | `{image: dataURL}` |
+| `POST /locate` | `{image: dataURL, width, height, objects: [{id, description}]}` | `{spots: [{id, box: [x1, y1, x2, y2] \| null}]}` |
+| `GET /jobs/:id` | | `{status: queued \| running \| done \| error, result?, error?}` |
+| `GET /health` | | `{ok, version, providers}` |
+
+The first provider is the Codex CLI: it draws with the learner's ChatGPT plan and places spots with structured output. On the example pages its boxes match hand-placed spots closely (median IoU around 0.85). Gemini is next.
