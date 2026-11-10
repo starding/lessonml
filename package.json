@@ -1,6 +1,6 @@
 {
   "name": "lessonml",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "A screenplay language for interactive, narrative lessons, designed to be written by language models.",
   "type": "module",
   "license": "Apache-2.0",

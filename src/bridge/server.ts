@@ -7,6 +7,13 @@
 //   POST /locate  {image, width, height, objects}   → {job}
 //   GET  /jobs/:id                                   → {status, result?, error?}
 //   GET  /health                                     → {ok, version, providers}
+//   GET  /relay  (a page, no token)                  → a small window the app opens
+//
+// Browsers restrict a public HTTPS page from calling a local HTTP server
+// (mixed content; Chrome's Local Network Access asks permission). The relay
+// window sidesteps both: it is a local page, so its calls to the bridge are
+// same-origin, and the app talks to it with postMessage, which crosses
+// origins freely. The relay only answers the allowed origins.
 
 import http from 'node:http'
 import crypto from 'node:crypto'
@@ -58,9 +65,10 @@ export function startBridge(options: BridgeOptions) {
     return job
   }
 
+  const self = `http://127.0.0.1:${options.port}`
   const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin || ''
-    const allowed = options.origins.includes(origin)
+    const allowed = options.origins.includes(origin) || origin === self
     if (allowed) {
       res.setHeader('Access-Control-Allow-Origin', origin)
       res.setHeader('Vary', 'Origin')
@@ -74,6 +82,11 @@ export function startBridge(options: BridgeOptions) {
       res.end(JSON.stringify(body))
     }
     if (req.method === 'OPTIONS') { res.writeHead(allowed ? 204 : 403).end(); return }
+    if (req.method === 'GET' && (req.url || '').split('?')[0] === '/relay') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+      res.end(relayPage(options.origins, options.version))
+      return
+    }
     if (origin && !allowed) { send(403, { error: `origin ${origin} is not allowed; start the bridge with --origin ${origin}` }); return }
     if (req.headers.authorization !== `Bearer ${options.token}`) { send(401, { error: 'missing or wrong pairing token' }); return }
 
@@ -131,3 +144,30 @@ const readJson = (req: http.IncomingMessage) => new Promise<Record<string, unkno
   })
   req.on('error', reject)
 })
+
+// The relay window: forwards {id, path, body, token} from an allowed opener to
+// this bridge and posts the answer back. It holds no secret of its own.
+const relayPage = (origins: string[], version: string) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>LessonML bridge</title>
+<style>body{margin:0;font:14px/1.5 -apple-system,"PingFang SC",sans-serif;background:#0d1416;color:#f5efe4;display:grid;place-items:center;height:100vh;text-align:center}
+b{color:#7fe0d4}small{opacity:.6}</style></head>
+<body><div><b>LessonML bridge ${version}</b><br><span id="s">waiting for the studio…</span><br><small>Keep this window open (you can minimize it) while pictures are drawn.</small></div>
+<script>
+const ALLOWED = ${JSON.stringify(origins)}
+const status = document.getElementById('s')
+let jobs = 0
+window.addEventListener('message', async (event) => {
+  if (!ALLOWED.includes(event.origin)) return
+  const { id, path, body, token } = event.data || {}
+  if (!id || typeof path !== 'string' || !path.startsWith('/')) return
+  status.textContent = 'connected to ' + event.origin + (body ? ' · working (' + (++jobs) + ')' : '')
+  try {
+    const response = await fetch(path, { method: body ? 'POST' : 'GET', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+    const json = await response.json().catch(() => ({}))
+    event.source.postMessage({ id, status: response.status, json }, event.origin)
+  } catch (error) {
+    event.source.postMessage({ id, status: 0, json: { error: String(error) } }, event.origin)
+  }
+})
+if (window.opener) for (const origin of ALLOWED) { try { window.opener.postMessage({ lessonmlRelay: 'ready' }, origin) } catch {} }
+</script></body></html>`

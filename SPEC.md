@@ -428,5 +428,8 @@ It listens on 127.0.0.1 only, answers only the given origins (with the Private N
 | `POST /locate` | `{image: dataURL, width, height, objects: [{id, description}]}` | `{spots: [{id, box: [x1, y1, x2, y2] \| null}]}` |
 | `GET /jobs/:id` | | `{status: queued \| running \| done \| error, result?, error?}` |
 | `GET /health` | | `{ok, version, providers}` |
+| `GET /relay` | | a page the app opens in a small window |
+
+A public HTTPS page usually cannot call a local HTTP server directly: browsers treat it as mixed content, and Chrome's Local Network Access asks for permission. The app opens `/relay` in a small window instead. That window is a local page, so its calls to the bridge are same-origin, and the app talks to it with `postMessage` as `{id, path, body, token}`, getting `{id, status, json}` back. The relay answers only the allowed origins.
 
 The first provider is the Codex CLI: it draws with the learner's ChatGPT plan and places spots with structured output. On the example pages its boxes match hand-placed spots closely (median IoU around 0.85). Gemini is next.
