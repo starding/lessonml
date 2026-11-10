@@ -426,6 +426,7 @@ It listens on 127.0.0.1 only, answers only the given origins (with the Private N
 |---|---|---|
 | `POST /images` | `{prompt, refs?: dataURL[], size?: "1024x1536"}` | `{image: dataURL}` |
 | `POST /locate` | `{image: dataURL, width, height, objects: [{id, description}]}` | `{spots: [{id, box: [x1, y1, x2, y2] \| null}]}` |
+| `POST /describe` | `{image: dataURL, prompt}` | `{text}`: a short answer about one picture, e.g. how a person looks, for an illustrator |
 | `GET /jobs/:id` | | `{status: queued \| running \| done \| error, result?, error?}` |
 | `GET /health` | | `{ok, version, providers}` |
 | `GET /relay` | | a page the app opens in a small window |

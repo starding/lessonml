@@ -5,6 +5,7 @@
 //
 //   POST /images  {prompt, refs?, size?}            → {job}
 //   POST /locate  {image, width, height, objects}   → {job}
+//   POST /describe {image, prompt}                  → {job} → {text}
 //   GET  /jobs/:id                                   → {status, result?, error?}
 //   GET  /health                                     → {ok, version, providers}
 //   GET  /relay  (a page, no token)                  → a small window the app opens
@@ -17,7 +18,7 @@
 
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { codexAvailable, generateWithCodex, locateWithCodex, type LocateObject } from './codex.js'
+import { codexAvailable, describeWithCodex, generateWithCodex, locateWithCodex, type LocateObject } from './codex.js'
 
 export interface BridgeOptions {
   port: number
@@ -27,7 +28,7 @@ export interface BridgeOptions {
   maxConcurrent?: number
 }
 
-interface Job { id: string; kind: 'images' | 'locate'; status: 'queued' | 'running' | 'done' | 'error'; result?: unknown; error?: string; created: number; started?: number; finished?: number }
+interface Job { id: string; kind: 'images' | 'locate' | 'describe'; status: 'queued' | 'running' | 'done' | 'error'; result?: unknown; error?: string; created: number; started?: number; finished?: number }
 
 const MAX_BODY = 30 * 1024 * 1024
 
@@ -120,6 +121,13 @@ export function startBridge(options: BridgeOptions) {
         const objects = (Array.isArray(body.objects) ? body.objects : []).map((object: LocateObject) => ({ id: String(object.id), description: String(object.description || object.id) }))
         if (!image || !width || !height || !objects.length) { send(400, { error: 'image, width, height and objects are required' }); return }
         const job = enqueue('locate', () => locateWithCodex(image, width, height, objects).then(({ spots }) => ({ spots })))
+        send(202, { job: job.id })
+        return
+      }
+      if (url.pathname === '/describe') {
+        const image = String(body.image || ''), prompt = String(body.prompt || '').trim()
+        if (!image || !prompt) { send(400, { error: 'image and prompt are required' }); return }
+        const job = enqueue('describe', () => describeWithCodex(image, prompt).then(({ text }) => ({ text })))
         send(202, { job: job.id })
         return
       }

@@ -113,3 +113,22 @@ export async function locateWithCodex(image: string, width: number, height: numb
     await fs.rm(dir, { recursive: true, force: true })
   }
 }
+
+// A short text answer about one picture (e.g. how a person looks, written for
+// an illustrator). Read-only: Codex runs no commands.
+export async function describeWithCodex(image: string, prompt: string): Promise<{ text: string; log: string }> {
+  const dir = await workdir()
+  try {
+    const { mime, bytes } = decodeDataUrl(image)
+    const file = path.join(dir, `photo.${extension(mime)}`)
+    await fs.writeFile(file, bytes)
+    const out = path.join(dir, 'out.txt')
+    const instruction = `Do not run any commands or tools; just look at the attached image.\n${prompt}\nReply with the answer only.`
+    const { code, log } = await run(['exec', '--skip-git-repo-check', '--ephemeral', '-s', 'read-only', '-C', dir, '-o', out, '-i', file], instruction, dir, 5 * 60 * 1000)
+    const text = (await fs.readFile(out, 'utf8').catch(() => '')).trim()
+    if (!text) throw new Error(`codex returned no text (exit ${code}). ${log.slice(-600)}`)
+    return { text, log: log.slice(-2000) }
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+}
